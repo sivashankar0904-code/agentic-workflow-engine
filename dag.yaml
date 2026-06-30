@@ -1,0 +1,38 @@
+services:
+  - name: mock_service_1
+    host: localhost
+    port: 8001
+    topic: mock-service-1
+
+  - name: mock_service_2
+    host: localhost
+    port: 8002
+    topic: mock-service-2
+
+  - name: mock_service_3
+    host: localhost
+    port: 8003
+    topic: mock-service-3
+
+  - name: mock_service_4
+    host: localhost
+    port: 8004
+    topic: mock-service-4
+
+routing:
+  source: mock-service-1
+  rules:
+    - condition:
+        field: message
+        contains: "[PDF]"
+      target: mock-service-2
+
+    - condition:
+        field: message
+        contains: "[CSV]"
+      target: mock-service-3
+
+    - condition:
+        field: message
+        contains: "[Excel]"
+      target: mock-service-4

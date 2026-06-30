@@ -2,7 +2,10 @@ module orchestrator
 
 go 1.26.4
 
-require github.com/twmb/franz-go v1.21.4
+require (
+	github.com/twmb/franz-go v1.21.4
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/klauspost/compress v1.18.6 // indirect
