@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+streamlit
+requests
+pandas
+openpyxl
+pdfplumber
