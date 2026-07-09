@@ -24,15 +24,15 @@ routing:
   rules:
     - condition:
         field: message
-        contains: "[PDF]"
+        contains: "[CSV]"
       target: mock-service-2
 
     - condition:
         field: message
-        contains: "[CSV]"
+        contains: "[Excel]"
       target: mock-service-3
 
     - condition:
         field: message
-        contains: "[Excel]"
+        contains: "[PDF]"
       target: mock-service-4
