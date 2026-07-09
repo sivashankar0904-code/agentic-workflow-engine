@@ -6,11 +6,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"orchestrator/internals/config"
+	"orchestrator/internals/dagconfig"
 )
 
 // New builds the Gin engine with CORS and the orchestrator's HTTP routes.
-func New(store *config.Store) *gin.Engine {
+func New(store *dagconfig.Store) *gin.Engine {
 	r := gin.Default()
 	r.Use(cors())
 
@@ -28,11 +28,17 @@ func New(store *config.Store) *gin.Engine {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
 			return
 		}
-		if _, err := store.Replace(body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid YAML: " + err.Error()})
+		// The bucket holds only DAG files; store under the user-provided name.
+		// Defaults to the currently active key when unspecified.
+		name := c.Query("name")
+		if name == "" {
+			name = store.ActiveKey()
+		}
+		if _, err := store.Replace(c.Request.Context(), name, body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to store DAG: " + err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "reloaded"})
+		c.JSON(http.StatusOK, gin.H{"status": "reloaded", "key": name})
 	})
 
 	return r

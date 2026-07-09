@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"orchestrator/internals/config"
+	"orchestrator/internals/dagconfig"
 )
 
 // Match returns the target topic for a message given the DAG's routing rules,
 // or "" if no rule matches.
-func Match(dag config.DAG, msg map[string]any) string {
+func Match(dag dagconfig.DAG, msg map[string]any) string {
 	for _, rule := range dag.Routing.Rules {
 		val, ok := msg[rule.Condition.Field]
 		if !ok {

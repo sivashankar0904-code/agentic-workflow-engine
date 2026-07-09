@@ -7,6 +7,23 @@
 # On Linux, host.docker.internal is mapped via extra_hosts below.
 
 services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   orchestrator:
     build:
       context: .
@@ -15,6 +32,15 @@ services:
       - "8000:8000"
     environment:
       KAFKA_BROKER: host.docker.internal:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET}
+      S3_DAG_KEY: dag.yaml
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_REGION: us-east-1
+    depends_on:
+      minio:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -72,3 +98,6 @@ services:
       - mock_service_2
       - mock_service_3
       - mock_service_4
+
+volumes:
+  minio-data:
