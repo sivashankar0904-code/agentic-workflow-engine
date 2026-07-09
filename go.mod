@@ -3,6 +3,7 @@ module orchestrator
 go 1.26.4
 
 require (
+	github.com/gin-gonic/gin v1.10.0
 	github.com/twmb/franz-go v1.21.4
 	gopkg.in/yaml.v3 v3.0.1
 )
