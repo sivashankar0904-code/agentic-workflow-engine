@@ -1,95 +1,39 @@
 package config
 
-import (
-	"log"
-	"os"
-	"sync"
+import "os"
 
-	"gopkg.in/yaml.v3"
-)
+// Config holds all runtime configuration, sourced from the environment with
+// static fallbacks.
+type Config struct {
+	// Kafka
+	KafkaBroker string
 
-// ── YAML schema ───────────────────────────────────────────────────────────────
-
-type Condition struct {
-	Field    string `yaml:"field" json:"field"`
-	Contains string `yaml:"contains" json:"contains"`
+	// S3 / MinIO
+	S3Endpoint      string
+	S3Bucket        string
+	S3Region        string
+	S3AccessKey     string
+	S3SecretKey     string
+	DAGKey          string // active DAG object key; the bucket holds only DAG files
 }
 
-type Rule struct {
-	Condition Condition `yaml:"condition" json:"condition"`
-	Target    string    `yaml:"target" json:"target"`
-}
+// Load reads configuration from the environment, applying static defaults.
+func Load() Config {
+	return Config{
+		KafkaBroker: env("KAFKA_BROKER", "localhost:9092"),
 
-type Routing struct {
-	Source string `yaml:"source" json:"source"`
-	Rules  []Rule `yaml:"rules" json:"rules"`
-}
-
-type Service struct {
-	Name  string `yaml:"name" json:"name"`
-	Host  string `yaml:"host" json:"host"`
-	Port  int    `yaml:"port" json:"port"`
-	Topic string `yaml:"topic" json:"topic"`
-}
-
-type DAG struct {
-	Services []Service `yaml:"services" json:"services"`
-	Routing  Routing   `yaml:"routing" json:"routing"`
-}
-
-// ── Store: thread-safe, hot-reloadable holder for the DAG ─────────────────────
-
-type Store struct {
-	path string
-	mu   sync.RWMutex
-	dag  DAG
-}
-
-// NewStore loads the DAG from path and returns a store guarding it.
-func NewStore(path string) (*Store, error) {
-	s := &Store{path: path}
-	if err := s.Load(); err != nil {
-		return nil, err
+		S3Endpoint:  env("S3_ENDPOINT", "http://localhost:9000"),
+		S3Bucket:    os.Getenv("S3_BUCKET"),
+		S3Region:    env("AWS_REGION", "us-east-1"),
+		S3AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
+		S3SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		DAGKey:      env("S3_DAG_KEY", "dag.yaml"),
 	}
-	return s, nil
 }
 
-// Load (re)reads the DAG from disk into the store.
-func (s *Store) Load() error {
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		return err
+func env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	var d DAG
-	if err := yaml.Unmarshal(data, &d); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.dag = d
-	s.mu.Unlock()
-	log.Printf("DAG loaded: source=%s rules=%d", d.Routing.Source, len(d.Routing.Rules))
-	return nil
-}
-
-// Get returns a copy-safe snapshot of the current DAG.
-func (s *Store) Get() DAG {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.dag
-}
-
-// Replace validates raw YAML, persists it to disk, and swaps it in atomically.
-func (s *Store) Replace(raw []byte) (DAG, error) {
-	var d DAG
-	if err := yaml.Unmarshal(raw, &d); err != nil {
-		return DAG{}, err
-	}
-	if err := os.WriteFile(s.path, raw, 0644); err != nil {
-		return DAG{}, err
-	}
-	s.mu.Lock()
-	s.dag = d
-	s.mu.Unlock()
-	log.Printf("DAG hot-reloaded: source=%s rules=%d", d.Routing.Source, len(d.Routing.Rules))
-	return d, nil
+	return def
 }

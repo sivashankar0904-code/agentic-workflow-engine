@@ -4,37 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"os"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"orchestrator/internals/config"
+	"orchestrator/internals/dagconfig"
 	"orchestrator/internals/router"
 )
-
-// Broker resolves the Kafka broker address from KAFKA_BROKER, defaulting to
-// localhost:9092.
-func Broker() string {
-	if b := os.Getenv("KAFKA_BROKER"); b != "" {
-		return b
-	}
-	return "localhost:9092"
-}
 
 // Orchestrator consumes from the DAG source topic, routes each message, and
 // produces it to the matched target topic.
 type Orchestrator struct {
-	store    *config.Store
+	store    *dagconfig.Store
 	consumer *kgo.Client
 	producer *kgo.Client
 }
 
 // New builds the consumer/producer clients for the given store's source topic.
-func New(store *config.Store) (*Orchestrator, error) {
+func New(broker string, store *dagconfig.Store) (*Orchestrator, error) {
 	source := store.Get().Routing.Source
 
 	consumer, err := kgo.NewClient(
-		kgo.SeedBrokers(Broker()),
+		kgo.SeedBrokers(broker),
 		kgo.ConsumeTopics(source),
 		kgo.ConsumerGroup("orchestrator-group"),
 	)
@@ -42,7 +32,7 @@ func New(store *config.Store) (*Orchestrator, error) {
 		return nil, err
 	}
 
-	producer, err := kgo.NewClient(kgo.SeedBrokers(Broker()))
+	producer, err := kgo.NewClient(kgo.SeedBrokers(broker))
 	if err != nil {
 		consumer.Close()
 		return nil, err
