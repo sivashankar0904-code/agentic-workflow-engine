@@ -1,29 +1,13 @@
-# App services only. Kafka and Postgres are expected to be running already
-# on the host (or elsewhere) and are reached via host.docker.internal.
+# App services only. Kafka, Postgres, and MinIO already run in the external
+# `local-docker_default` network and are reached by container name:
 #
-#   Kafka:    host.docker.internal:9092
-#   Postgres: host.docker.internal:5432
+#   Kafka:    kafka:29092   (INTERNAL advertised listener)
+#   Postgres: postgres:5432
+#   MinIO:    minio:9000
 #
-# On Linux, host.docker.internal is mapped via extra_hosts below.
+# These services join that same network so DNS resolves the container names.
 
 services:
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # web console
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   orchestrator:
     build:
       context: .
@@ -31,62 +15,49 @@ services:
     ports:
       - "8000:8000"
     environment:
-      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_BROKER: kafka:29092
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: ${S3_BUCKET}
       S3_DAG_KEY: dag.yaml
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
       AWS_REGION: us-east-1
-    depends_on:
-      minio:
-        condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   mock_service_1:
     build: ./mock_services/mock_service_1
     ports:
       - "8001:8001"
     environment:
-      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC: mock-service-1
-      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_1
 
   mock_service_2:
     build: ./mock_services/mock_service_2
     ports:
       - "8002:8002"
     environment:
-      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC: mock-service-2
-      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_2
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_2
 
   mock_service_3:
     build: ./mock_services/mock_service_3
     ports:
       - "8003:8003"
     environment:
-      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC: mock-service-3
-      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_3
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_3
 
   mock_service_4:
     build: ./mock_services/mock_service_4
     ports:
       - "8004:8004"
     environment:
-      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC: mock-service-4
-      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_4
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_4
 
   ui:
     build: ./ui-react
@@ -99,5 +70,8 @@ services:
       - mock_service_3
       - mock_service_4
 
-volumes:
-  minio-data:
+# Join the pre-existing network that kafka / postgres / minio run in.
+networks:
+  default:
+    name: local-docker_default
+    external: true
