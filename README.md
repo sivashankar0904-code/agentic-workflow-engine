@@ -34,7 +34,6 @@ React UI (port 5173)
 Go-Agentic-AI-Orchestrator/
 ├── main.go                  # Go orchestrator — Kafka consumer + HTTP API
 ├── go.mod / go.sum
-├── vendor/                  # Vendored Go dependencies
 ├── dag.yaml                 # DAG routing config (hot-reloadable)
 ├── kafka_setup.py           # One-time Kafka topic creation script
 │
@@ -185,7 +184,7 @@ cd mock_service_4
 uv run python main.py
 
 # Go Orchestrator — port 8000
-go run -mod=vendor main.go
+go run main.go
 
 # React UI — port 5173
 cd ui-react
