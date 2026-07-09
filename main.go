@@ -15,10 +15,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	broker  = "localhost:9092"
-	dagFile = "dag.yaml"
-)
+const dagFile = "dag.yaml"
+
+func broker() string {
+	if b := os.Getenv("KAFKA_BROKER"); b != "" {
+		return b
+	}
+	return "localhost:9092"
+}
 
 // ── YAML schema ───────────────────────────────────────────────────────────────
 
@@ -93,7 +97,7 @@ func main() {
 	}
 
 	consumer, err := kgo.NewClient(
-		kgo.SeedBrokers(broker),
+		kgo.SeedBrokers(broker()),
 		kgo.ConsumeTopics(dag.Routing.Source),
 		kgo.ConsumerGroup("orchestrator-group"),
 	)
@@ -102,7 +106,7 @@ func main() {
 	}
 	defer consumer.Close()
 
-	producer, err := kgo.NewClient(kgo.SeedBrokers(broker))
+	producer, err := kgo.NewClient(kgo.SeedBrokers(broker()))
 	if err != nil {
 		log.Fatalf("failed to create producer: %v", err)
 	}
