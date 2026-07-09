@@ -1,0 +1,74 @@
+# App services only. Kafka and Postgres are expected to be running already
+# on the host (or elsewhere) and are reached via host.docker.internal.
+#
+#   Kafka:    host.docker.internal:9092
+#   Postgres: host.docker.internal:5432
+#
+# On Linux, host.docker.internal is mapped via extra_hosts below.
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BROKER: host.docker.internal:9092
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mock_service_1:
+    build: ./mock_services/mock_service_1
+    ports:
+      - "8001:8001"
+    environment:
+      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_TOPIC: mock-service-1
+      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mock_service_2:
+    build: ./mock_services/mock_service_2
+    ports:
+      - "8002:8002"
+    environment:
+      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_TOPIC: mock-service-2
+      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mock_service_3:
+    build: ./mock_services/mock_service_3
+    ports:
+      - "8003:8003"
+    environment:
+      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_TOPIC: mock-service-3
+      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_3
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mock_service_4:
+    build: ./mock_services/mock_service_4
+    ports:
+      - "8004:8004"
+    environment:
+      KAFKA_BROKER: host.docker.internal:9092
+      KAFKA_TOPIC: mock-service-4
+      # DATABASE_URL: postgresql://user:pass@host.docker.internal:5432/mock_service_4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ui:
+    build: ./ui-react
+    ports:
+      - "5173:5173"
+    depends_on:
+      - orchestrator
+      - mock_service_1
+      - mock_service_2
+      - mock_service_3
+      - mock_service_4
