@@ -30,3 +30,10 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Streamweave article/cover assets (not part of the codebase)
+doc/streamweave-article.html
+doc/streamweave-cover-render.html
+doc/streamweave-cover.html
+doc/streamweave-cover.png
+doc/streamweave-linkedin-article.md
