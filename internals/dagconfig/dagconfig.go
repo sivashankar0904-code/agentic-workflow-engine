@@ -52,41 +52,21 @@ type Store struct {
 	dag  DAG
 }
 
-// NewStore loads the DAG named activeName from dir, creating dir if needed.
-func NewStore(ctx context.Context, dir, activeName string) (*Store, error) {
+// NewStore returns a store bound to dir, creating dir if needed. No DAG is
+// loaded at startup; the store holds an empty DAG until one is uploaded via
+// Replace. With no active DAG there is simply no workflow.
+func NewStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dir, name: activeName}
-	if err := s.Load(ctx); err != nil {
-		return nil, err
-	}
-	return s, nil
+	return &Store{dir: dir}, nil
 }
 
-// Load (re)reads the active DAG file into the store.
-func (s *Store) Load(ctx context.Context) error {
+// Active reports whether a DAG is currently loaded.
+func (s *Store) Active() bool {
 	s.mu.RLock()
-	name := s.name
-	s.mu.RUnlock()
-
-	path := filepath.Join(s.dir, name)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	var d DAG
-	if err := yaml.Unmarshal(data, &d); err != nil {
-		return err
-	}
-
-	s.mu.Lock()
-	s.dag = d
-	s.mu.Unlock()
-	log.Printf("DAG loaded from %s: source=%s rules=%d",
-		path, d.Routing.Source, len(d.Routing.Rules))
-	return nil
+	defer s.mu.RUnlock()
+	return s.name != ""
 }
 
 // Get returns a snapshot of the current DAG.

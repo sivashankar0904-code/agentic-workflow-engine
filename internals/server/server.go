@@ -29,10 +29,13 @@ func New(store *dagconfig.Store) *gin.Engine {
 			return
 		}
 		// The DAG dir holds only DAG files; store under the user-provided name.
-		// Defaults to the currently active key when unspecified.
+		// Defaults to the active file, or dag.yaml when none is active yet.
 		name := c.Query("name")
 		if name == "" {
 			name = store.ActiveKey()
+		}
+		if name == "" {
+			name = "dag.yaml"
 		}
 		if _, err := store.Replace(c.Request.Context(), name, body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to store DAG: " + err.Error()})
