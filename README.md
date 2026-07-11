@@ -1,25 +1,24 @@
 # Go Agentic AI Orchestrator
 
-An event-driven orchestration system where a Go orchestrator consumes messages from Kafka and routes them to downstream services based on a YAML-defined DAG. The routing config is hot-reloadable via the HTTP API without restarting the orchestrator.
+A Go service that stores and serves a YAML-defined DAG (services + routing rules)
+over an HTTP API. DAG files live on the local filesystem and can be uploaded /
+hot-swapped via the API without restarting the service.
 
 ---
 
 ## Architecture
 
 ```
-                    Kafka topic: mock-service-1
-                              │
                     Go Orchestrator (port 8000)
-                    reads dag.yaml routing rules
                               │
-        ┌─────────────────────┼─────────────────────┐
-        ▼                     ▼                     ▼
-  mock-service-2        mock-service-3        mock-service-4
-   (Kafka topic)         (Kafka topic)         (Kafka topic)
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+              HTTP API            DAG YAML store
+          (/health, /config)     (local filesystem)
 ```
 
-The orchestrator consumes from the `source` topic, evaluates each message against
-the routing rules in `dag.yaml`, and republishes matching messages to the target topic.
+The service exposes the current DAG as JSON and accepts new YAML via `POST /config`,
+persisting each upload to `DAG_DIR` and making it the active config in memory.
 
 ---
 
@@ -27,20 +26,20 @@ the routing rules in `dag.yaml`, and republishes matching messages to the target
 
 ```
 agentic-workflow-engine/
-├── main.go                  # Go orchestrator — Kafka consumer + HTTP API
+├── main.go                  # HTTP API entrypoint
 ├── go.mod / go.sum
-├── dags/dag.yaml            # DAG routing config (hot-reloadable)
-├── Dockerfile               # Orchestrator container image
-├── docker-compose.yml       # Runs the orchestrator on the shared network
-└── internals/               # config, kafka client, and orchestrator internals
+├── dags/dag.yaml            # DAG config (hot-reloadable, stored locally)
+├── Dockerfile               # Container image
+├── docker-compose.yml       # Runs the service with a mounted dags/ volume
+└── internals/               # config, dagconfig store, and HTTP server
 ```
 
 ---
 
 ## DAG Config (`dag.yaml`)
 
-Defines services and routing rules. `POST /config` a new YAML to hot-reload routing
-without restarting the orchestrator.
+Defines services and routing rules. `POST /config` a new YAML to hot-swap the
+active config without restarting the service.
 
 ```yaml
 services:
@@ -50,12 +49,12 @@ services:
     topic: mock-service-1
 
 routing:
-  source: mock-service-1       # topic the orchestrator consumes from
+  source: mock-service-1       # source identifier
   rules:
     - condition:
         field: message         # JSON field to match on
         contains: "[CSV]"
-      target: mock-service-2   # Kafka topic to route to
+      target: mock-service-2   # target to route to
 
     - condition:
         field: message
@@ -73,7 +72,6 @@ routing:
 ## Prerequisites
 
 - Go 1.21+
-- Apache Kafka running on `localhost:9092`
 
 ---
 
@@ -85,13 +83,13 @@ routing:
 go run main.go
 ```
 
-The orchestrator listens on port 8000.
+The service listens on port 8000. DAG files are read from / written to `DAG_DIR`
+(default `./dags`).
 
 ### With Docker Compose
 
-Kafka and Postgres are expected to already run in the external
-`local-docker_default` network. DAG YAML files are stored on the local
-filesystem (see `DAG_DIR`). Copy `.env.example` to `.env`, then:
+DAG YAML files are stored on the local filesystem and mounted into the container
+(see `DAG_DIR`). Copy `.env.example` to `.env`, then:
 
 ```powershell
 docker compose up --build
@@ -99,13 +97,13 @@ docker compose up --build
 
 ---
 
-## Go Orchestrator API
+## API
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
 | `GET` | `/config` | Returns current DAG as JSON |
-| `POST` | `/config` | Upload new YAML config, hot-reloads routing immediately |
+| `POST` | `/config` | Upload new YAML config; stores it and makes it active. Optional `?name=<file>` to name the stored file |
 
 ---
 
@@ -113,5 +111,5 @@ docker compose up --build
 
 | Layer | Technology |
 |---|---|
-| Orchestrator | Go, [franz-go](https://github.com/twmb/franz-go), gopkg.in/yaml.v3 |
-| Message Bus | Apache Kafka |
+| Service | Go, [gin](https://github.com/gin-gonic/gin), gopkg.in/yaml.v3 |
+| DAG storage | Local filesystem |
