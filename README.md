@@ -36,7 +36,7 @@ agentic-workflow-engine/
 │   ├── 01_dag_registry.sql
 │   ├── 02_nodes.sql
 │   └── 03_edges.sql
-├── dags/dag.yaml            # example DAG (upload payload)
+├── mock/dag.yaml            # example DAG (upload payload)
 ├── internal/
 │   ├── config/              # env config (DATABASE_URL)
 │   ├── dag/                 # domain: types, YAML transform, Postgres Store (CRUD)
