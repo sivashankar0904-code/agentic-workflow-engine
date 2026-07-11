@@ -5,14 +5,14 @@ import "os"
 // Config holds all runtime configuration, sourced from the environment with
 // static fallbacks.
 type Config struct {
-	// DAG storage (local filesystem)
-	DAGDir string // directory holding DAG YAML files
+	// Postgres connection string (pgx/libpq DSN or URL).
+	DatabaseURL string
 }
 
 // Load reads configuration from the environment, applying static defaults.
 func Load() Config {
 	return Config{
-		DAGDir: env("DAG_DIR", "./dags"),
+		DatabaseURL: env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/orchestrator?sslmode=disable"),
 	}
 }
 

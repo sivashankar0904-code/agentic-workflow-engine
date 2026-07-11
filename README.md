@@ -1,8 +1,10 @@
 # Go Agentic AI Orchestrator
 
-A Go service that stores and serves a YAML-defined DAG (services + routing rules)
-over an HTTP API. DAG files live on the local filesystem and can be uploaded /
-hot-swapped via the API without restarting the service.
+A Go service that stores workflow DAGs (services + routing rules) in Postgres as a
+first-class graph, and serves them over an HTTP API. DAGs are uploaded and served
+as YAML; internally they are persisted relationally (registry + nodes + edges) so
+the graph can be queried, traversed, and validated in SQL. Multiple named DAGs
+coexist.
 
 ---
 
@@ -13,12 +15,15 @@ hot-swapped via the API without restarting the service.
                               │
                     ┌─────────┴─────────┐
                     ▼                   ▼
-              HTTP API            DAG YAML store
-          (/health, /config)     (local filesystem)
+              HTTP API            Postgres graph store
+       (/health, /config, /dags)   dag_registry
+                                    ├── nodes  (services / vertices)
+                                    └── edges  (routing rules / edges)
 ```
 
-The service exposes the current DAG as JSON and accepts new YAML via `POST /config`,
-persisting each upload to `DAG_DIR` and making it the active config in memory.
+YAML is only the wire format. On `POST`, the YAML is parsed and written into the
+graph tables in a transaction; on `GET`, the graph is reassembled from nodes/edges
+and rendered back to YAML.
 
 ---
 
@@ -26,20 +31,40 @@ persisting each upload to `DAG_DIR` and making it the active config in memory.
 
 ```
 agentic-workflow-engine/
-├── main.go                  # HTTP API entrypoint
-├── go.mod / go.sum
-├── dags/dag.yaml            # DAG config (hot-reloadable, stored locally)
-├── Dockerfile               # Container image
-├── docker-compose.yml       # Runs the service with a mounted dags/ volume
-└── internals/               # config, dagconfig store, and HTTP server
+├── cmd/orchestrator/        # main.go — entrypoint: opens pg pool, wires deps
+├── schemas/                 # SQL table definitions (apply manually)
+│   ├── 01_dag_registry.sql
+│   ├── 02_nodes.sql
+│   └── 03_edges.sql
+├── dags/dag.yaml            # example DAG (upload payload)
+├── internal/
+│   ├── config/              # env config (DATABASE_URL)
+│   ├── dag/                 # domain: types, YAML transform, Postgres Store (CRUD)
+│   └── server/              # gin engine, handlers, middleware
+├── Dockerfile
+└── docker-compose.yml       # postgres + orchestrator
 ```
 
 ---
 
-## DAG Config (`dag.yaml`)
+## Graph Model
 
-Defines services and routing rules. `POST /config` a new YAML to hot-swap the
-active config without restarting the service.
+| Table | Role |
+|---|---|
+| `dag_registry` | one row per named DAG |
+| `nodes` | services — graph vertices, unique by `(dag_id, name)` |
+| `edges` | routing rules — graph edges, referencing nodes by id (FK) |
+
+Because edges reference nodes by foreign key, the graph is enforced by the DB and
+queryable — e.g. reachability from a source node via a recursive CTE, cycle
+detection, orphan detection.
+
+The routing `source` and each rule `target` are topic strings; they are resolved
+to nodes by matching `nodes.topic`.
+
+---
+
+## DAG Payload (`dag.yaml`)
 
 ```yaml
 services:
@@ -49,12 +74,12 @@ services:
     topic: mock-service-1
 
 routing:
-  source: mock-service-1       # source identifier
+  source: mock-service-1       # source node (by topic)
   rules:
     - condition:
         field: message         # JSON field to match on
         contains: "[CSV]"
-      target: mock-service-2   # target to route to
+      target: mock-service-2   # target node (by topic)
 
     - condition:
         field: message
@@ -72,6 +97,7 @@ routing:
 ## Prerequisites
 
 - Go 1.21+
+- PostgreSQL (schema files in `schemas/` applied manually, in numeric order)
 
 ---
 
@@ -80,16 +106,20 @@ routing:
 ### Locally
 
 ```powershell
-go run main.go
+# Apply schemas once (registry -> nodes -> edges order matters):
+psql "$env:DATABASE_URL" -f schemas/01_dag_registry.sql
+psql "$env:DATABASE_URL" -f schemas/02_nodes.sql
+psql "$env:DATABASE_URL" -f schemas/03_edges.sql
+
+go run ./cmd/orchestrator
 ```
 
-The service listens on port 8000. DAG files are read from / written to `DAG_DIR`
-(default `./dags`).
+The service listens on port 8000. Connection string comes from `DATABASE_URL`
+(default `postgres://postgres:postgres@localhost:5432/orchestrator?sslmode=disable`).
 
 ### With Docker Compose
 
-DAG YAML files are stored on the local filesystem and mounted into the container
-(see `DAG_DIR`). Copy `.env.example` to `.env`, then:
+Compose starts Postgres (applying `schemas/` on first init) and the orchestrator:
 
 ```powershell
 docker compose up --build
@@ -102,8 +132,10 @@ docker compose up --build
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
-| `GET` | `/config` | Returns current DAG as JSON |
-| `POST` | `/config` | Upload new YAML config; stores it and makes it active. Optional `?name=<file>` to name the stored file |
+| `GET` | `/dags` | List all stored DAG names |
+| `GET` | `/config?name=<dag>` | Returns the named DAG as YAML |
+| `POST` | `/config?name=<dag>` | Upload YAML; creates or replaces the named DAG |
+| `DELETE` | `/config?name=<dag>` | Delete the named DAG (nodes/edges cascade) |
 
 ---
 
@@ -112,4 +144,4 @@ docker compose up --build
 | Layer | Technology |
 |---|---|
 | Service | Go, [gin](https://github.com/gin-gonic/gin), gopkg.in/yaml.v3 |
-| DAG storage | Local filesystem |
+| DAG storage | PostgreSQL via [pgx](https://github.com/jackc/pgx) (graph: registry + nodes + edges) |

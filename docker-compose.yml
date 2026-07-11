@@ -1,12 +1,39 @@
+name: orchestrator
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orchestrator-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orchestrator
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Schema files are applied on first init (empty data dir), in filename order.
+      - ./schemas:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orchestrator"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   orchestrator:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: orchestrator-app
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      DAG_DIR: /data/dags
-    volumes:
-      # Persist DAG YAML files on the host.
-      - ./dags:/data/dags
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
