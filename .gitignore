@@ -31,6 +31,9 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Docs folder (articles, cover assets — not part of the codebase)
+docs/
+
 # Streamweave article/cover assets (not part of the codebase)
 doc/streamweave-article.html
 doc/streamweave-cover-render.html

@@ -7,7 +7,6 @@ import (
 	"orchestrator/internals/config"
 	"orchestrator/internals/dagconfig"
 	"orchestrator/internals/kafka"
-	"orchestrator/internals/s3bucket"
 	"orchestrator/internals/server"
 )
 
@@ -16,14 +15,9 @@ func main() {
 
 	cfg := config.Load()
 
-	bucket, err := s3bucket.New(ctx, cfg)
+	store, err := dagconfig.NewStore(ctx, cfg.DAGDir, cfg.DAGKey)
 	if err != nil {
-		log.Fatalf("failed to init MinIO client: %v", err)
-	}
-
-	store, err := dagconfig.NewStore(ctx, bucket, cfg.DAGKey)
-	if err != nil {
-		log.Fatalf("failed to load DAG from MinIO: %v", err)
+		log.Fatalf("failed to load DAG: %v", err)
 	}
 
 	orch, err := kafka.New(cfg.KafkaBroker, store)

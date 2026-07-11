@@ -28,7 +28,7 @@ func New(store *dagconfig.Store) *gin.Engine {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
 			return
 		}
-		// The bucket holds only DAG files; store under the user-provided name.
+		// The DAG dir holds only DAG files; store under the user-provided name.
 		// Defaults to the currently active key when unspecified.
 		name := c.Query("name")
 		if name == "" {
