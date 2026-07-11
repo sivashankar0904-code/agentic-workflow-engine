@@ -11,7 +11,7 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile.orchestrator
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -22,53 +22,6 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
       AWS_REGION: us-east-1
-
-  mock_service_1:
-    build: ./mock_services/mock_service_1
-    ports:
-      - "8001:8001"
-    environment:
-      KAFKA_BROKER: kafka:29092
-      KAFKA_TOPIC: mock-service-1
-      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_1
-
-  mock_service_2:
-    build: ./mock_services/mock_service_2
-    ports:
-      - "8002:8002"
-    environment:
-      KAFKA_BROKER: kafka:29092
-      KAFKA_TOPIC: mock-service-2
-      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_2
-
-  mock_service_3:
-    build: ./mock_services/mock_service_3
-    ports:
-      - "8003:8003"
-    environment:
-      KAFKA_BROKER: kafka:29092
-      KAFKA_TOPIC: mock-service-3
-      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_3
-
-  mock_service_4:
-    build: ./mock_services/mock_service_4
-    ports:
-      - "8004:8004"
-    environment:
-      KAFKA_BROKER: kafka:29092
-      KAFKA_TOPIC: mock-service-4
-      # DATABASE_URL: postgresql://user:pass@postgres:5432/mock_service_4
-
-  ui:
-    build: ./ui-react
-    ports:
-      - "5173:5173"
-    depends_on:
-      - orchestrator
-      - mock_service_1
-      - mock_service_2
-      - mock_service_3
-      - mock_service_4
 
 # Join the pre-existing network that kafka / postgres / minio run in.
 networks:
