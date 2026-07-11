@@ -29,7 +29,7 @@ the routing rules in `dag.yaml`, and republishes matching messages to the target
 agentic-workflow-engine/
 ├── main.go                  # Go orchestrator — Kafka consumer + HTTP API
 ├── go.mod / go.sum
-├── dag.yaml                 # DAG routing config (hot-reloadable)
+├── dags/dag.yaml            # DAG routing config (hot-reloadable)
 ├── Dockerfile               # Orchestrator container image
 ├── docker-compose.yml       # Runs the orchestrator on the shared network
 └── internals/               # config, kafka client, and orchestrator internals
@@ -89,8 +89,9 @@ The orchestrator listens on port 8000.
 
 ### With Docker Compose
 
-Kafka, Postgres, and MinIO are expected to already run in the external
-`local-docker_default` network. Copy `.env.example` to `.env`, then:
+Kafka and Postgres are expected to already run in the external
+`local-docker_default` network. DAG YAML files are stored on the local
+filesystem (see `DAG_DIR`). Copy `.env.example` to `.env`, then:
 
 ```powershell
 docker compose up --build

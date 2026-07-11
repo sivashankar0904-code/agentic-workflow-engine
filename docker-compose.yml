@@ -1,9 +1,8 @@
-# App services only. Kafka, Postgres, and MinIO already run in the external
+# App services only. Kafka and Postgres already run in the external
 # `local-docker_default` network and are reached by container name:
 #
 #   Kafka:    kafka:29092   (INTERNAL advertised listener)
 #   Postgres: postgres:5432
-#   MinIO:    minio:9000
 #
 # These services join that same network so DNS resolves the container names.
 
@@ -16,14 +15,13 @@ services:
       - "8000:8000"
     environment:
       KAFKA_BROKER: kafka:29092
-      S3_ENDPOINT: http://minio:9000
-      S3_BUCKET: ${S3_BUCKET}
-      S3_DAG_KEY: dag.yaml
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      AWS_REGION: us-east-1
+      DAG_DIR: /data/dags
+      DAG_KEY: dag.yaml
+    volumes:
+      # Persist DAG YAML files on the host.
+      - ./dags:/data/dags
 
-# Join the pre-existing network that kafka / postgres / minio run in.
+# Join the pre-existing network that kafka / postgres run in.
 networks:
   default:
     name: local-docker_default

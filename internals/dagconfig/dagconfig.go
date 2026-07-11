@@ -3,11 +3,11 @@ package dagconfig
 import (
 	"context"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"gopkg.in/yaml.v3"
-
-	"orchestrator/internals/s3bucket"
 )
 
 // ── YAML schema ───────────────────────────────────────────────────────────────
@@ -39,35 +39,39 @@ type DAG struct {
 	Routing  Routing   `yaml:"routing" json:"routing"`
 }
 
-// ── Store: thread-safe, MinIO-backed holder for the DAG ───────────────────────
+// ── Store: thread-safe, filesystem-backed holder for the DAG ──────────────────
 //
-// The DAG lives as an object in the bucket. The bucket holds only DAG files,
-// keyed by filename; the store tracks which key is currently active.
+// The DAG lives as a YAML file in a local directory. The directory holds only
+// DAG files, keyed by filename; the store tracks which file is currently active.
 
 type Store struct {
-	bucket *s3bucket.Client
+	dir string // directory holding DAG YAML files
 
-	mu  sync.RWMutex
-	key string // active DAG object key
-	dag DAG
+	mu   sync.RWMutex
+	name string // active DAG file name
+	dag  DAG
 }
 
-// NewStore loads the DAG at activeKey from the bucket.
-func NewStore(ctx context.Context, bucket *s3bucket.Client, activeKey string) (*Store, error) {
-	s := &Store{bucket: bucket, key: activeKey}
+// NewStore loads the DAG named activeName from dir, creating dir if needed.
+func NewStore(ctx context.Context, dir, activeName string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	s := &Store{dir: dir, name: activeName}
 	if err := s.Load(ctx); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-// Load (re)reads the active DAG object from the bucket into the store.
+// Load (re)reads the active DAG file into the store.
 func (s *Store) Load(ctx context.Context) error {
 	s.mu.RLock()
-	key := s.key
+	name := s.name
 	s.mu.RUnlock()
 
-	data, err := s.bucket.Get(ctx, key)
+	path := filepath.Join(s.dir, name)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
@@ -80,8 +84,8 @@ func (s *Store) Load(ctx context.Context) error {
 	s.mu.Lock()
 	s.dag = d
 	s.mu.Unlock()
-	log.Printf("DAG loaded from s3://%s/%s: source=%s rules=%d",
-		s.bucket.Bucket(), key, d.Routing.Source, len(d.Routing.Rules))
+	log.Printf("DAG loaded from %s: source=%s rules=%d",
+		path, d.Routing.Source, len(d.Routing.Rules))
 	return nil
 }
 
@@ -92,30 +96,31 @@ func (s *Store) Get() DAG {
 	return s.dag
 }
 
-// ActiveKey returns the object key of the DAG currently in use.
+// ActiveKey returns the file name of the DAG currently in use.
 func (s *Store) ActiveKey() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.key
+	return s.name
 }
 
-// Replace validates raw YAML, uploads it to the bucket under name, and makes it
-// the active DAG atomically.
+// Replace validates raw YAML, writes it to the directory under name, and makes
+// it the active DAG atomically.
 func (s *Store) Replace(ctx context.Context, name string, raw []byte) (DAG, error) {
 	var d DAG
 	if err := yaml.Unmarshal(raw, &d); err != nil {
 		return DAG{}, err
 	}
 
-	if err := s.bucket.Put(ctx, name, raw, "application/x-yaml"); err != nil {
+	path := filepath.Join(s.dir, name)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		return DAG{}, err
 	}
 
 	s.mu.Lock()
-	s.key = name
+	s.name = name
 	s.dag = d
 	s.mu.Unlock()
-	log.Printf("DAG uploaded to s3://%s/%s and activated: source=%s rules=%d",
-		s.bucket.Bucket(), name, d.Routing.Source, len(d.Routing.Rules))
+	log.Printf("DAG written to %s and activated: source=%s rules=%d",
+		path, d.Routing.Source, len(d.Routing.Rules))
 	return d, nil
 }
