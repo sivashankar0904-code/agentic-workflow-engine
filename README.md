@@ -31,17 +31,20 @@ and rendered back to YAML.
 
 ```
 agentic-workflow-engine/
-├── cmd/orchestrator/        # main.go — entrypoint: opens pg pool, wires deps
-├── schemas/                 # SQL table definitions (apply manually)
-│   ├── 01_dag_registry.sql
-│   ├── 02_nodes.sql
-│   └── 03_edges.sql
-├── mock/dag.yaml            # example DAG (upload payload)
-├── internal/
-│   ├── config/              # env config (DATABASE_URL)
-│   ├── dag/                 # domain: types, YAML transform, Postgres Store (CRUD)
-│   └── server/              # gin engine, handlers, middleware
-├── Dockerfile
+├── service_orchestrator/
+│   ├── cmd/orchestrator/    # main.go — entrypoint: opens pg pool, wires deps
+│   ├── schemas/             # SQL table definitions (apply manually)
+│   │   ├── 01_dag_registry.sql
+│   │   ├── 02_nodes.sql
+│   │   └── 03_edges.sql
+│   ├── mock/dag.yaml        # example DAG (upload payload)
+│   ├── internal/
+│   │   ├── config/          # env config (DATABASE_URL)
+│   │   ├── dag/              # domain: types, YAML transform, Postgres Store (CRUD)
+│   │   └── server/           # gin engine, handlers, middleware
+│   ├── go.mod
+│   ├── go.sum
+│   └── Dockerfile
 └── docker-compose.yml       # postgres + orchestrator
 ```
 
@@ -97,7 +100,7 @@ routing:
 ## Prerequisites
 
 - Go 1.21+
-- PostgreSQL (schema files in `schemas/` applied manually, in numeric order)
+- PostgreSQL (schema files in `service_orchestrator/schemas/` applied manually, in numeric order)
 
 ---
 
@@ -107,10 +110,11 @@ routing:
 
 ```powershell
 # Apply schemas once (registry -> nodes -> edges order matters):
-psql "$env:DATABASE_URL" -f schemas/01_dag_registry.sql
-psql "$env:DATABASE_URL" -f schemas/02_nodes.sql
-psql "$env:DATABASE_URL" -f schemas/03_edges.sql
+psql "$env:DATABASE_URL" -f service_orchestrator/schemas/01_dag_registry.sql
+psql "$env:DATABASE_URL" -f service_orchestrator/schemas/02_nodes.sql
+psql "$env:DATABASE_URL" -f service_orchestrator/schemas/03_edges.sql
 
+cd service_orchestrator
 go run ./cmd/orchestrator
 ```
 
