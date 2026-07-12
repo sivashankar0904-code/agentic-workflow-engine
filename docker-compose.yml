@@ -14,7 +14,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Schema files are applied on first init (empty data dir), in filename order.
-      - ./schemas:/docker-entrypoint-initdb.d:ro
+      - ./service_orchestrator/schemas:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d orchestrator"]
       interval: 5s
@@ -23,7 +23,7 @@ services:
 
   orchestrator:
     build:
-      context: .
+      context: ./service_orchestrator
       dockerfile: Dockerfile
     container_name: orchestrator-app
     restart: unless-stopped
