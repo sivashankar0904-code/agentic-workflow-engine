@@ -230,7 +230,7 @@ func (s *Store) DeleteRole(ctx context.Context, name string) error {
 		return err
 	}
 	if inUse > 0 {
-		return fmt.Errorf("%w: %d user(s) still have this role", ErrLastAdmin, inUse)
+		return fmt.Errorf("%w: %d user(s) still have this role", ErrRoleInUse, inUse)
 	}
 
 	tag, err := s.pool.Exec(ctx, `DELETE FROM roles WHERE name = $1`, name)
