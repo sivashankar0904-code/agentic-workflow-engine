@@ -35,5 +35,16 @@ services:
       postgres:
         condition: service_healthy
 
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: orchestrator-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - orchestrator
+
 volumes:
   pgdata:
