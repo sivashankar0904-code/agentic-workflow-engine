@@ -1,17 +1,131 @@
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   A restrained, professional palette: neutral greys, one indigo accent, subtle
+   borders and shadows. Light is the default; dark is a full remap of the same
+   tokens so every component styles once. */
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: light dark;
+  /* Surfaces */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --surface-hover: #eef0f3;
+
+  /* Text */
+  --text: #1a1d24;
+  --text-muted: #5b616e;
+  --text-faint: #8a909c;
+
+  /* Lines */
+  --border: #e2e5ea;
+  --border-strong: #cfd4dc;
+
+  /* Accent (indigo) */
+  --accent: #4f56d6;
+  --accent-hover: #4148c4;
+  --accent-soft: #ecedfb;
+  --accent-text: #ffffff;
+
+  /* Status */
+  --ok: #1f9d63;
+  --ok-soft: #e5f5ec;
+  --warn: #b5851f;
+  --danger: #c9463f;
+  --danger-soft: #fbebea;
+  --running: #2f6fed;
+
+  /* Shape */
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(16, 20, 32, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 20, 32, 0.08);
+
+  --sidebar-w: 264px;
+  --header-h: 56px;
+
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: 'SFMono-Regular', ui-monospace, 'Cascadia Code', Consolas,
+    'Liberation Mono', Menlo, monospace;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0f1116;
+  --surface: #171a21;
+  --surface-2: #1d212a;
+  --surface-hover: #232833;
+
+  --text: #e7eaf0;
+  --text-muted: #a0a7b4;
+  --text-faint: #6b7280;
+
+  --border: #262b35;
+  --border-strong: #333a47;
+
+  --accent: #7a80ec;
+  --accent-hover: #8b91f0;
+  --accent-soft: #21243a;
+  --accent-text: #0f1116;
+
+  --ok: #46c98a;
+  --ok-soft: #13291f;
+  --warn: #d9ad52;
+  --danger: #e5716a;
+  --danger-soft: #2c1a19;
+  --running: #6fa0ff;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-h1 {
-  font-size: 2.4em;
-  line-height: 1.1;
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--accent-soft);
 }

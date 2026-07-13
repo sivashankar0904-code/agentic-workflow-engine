@@ -1,20 +1,34 @@
-import { useState } from 'react'
-import './App.css'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import AppShell from './components/AppShell.jsx'
+import RegistryPage from './routes/RegistryPage.jsx'
+import RunPage from './routes/RunPage.jsx'
+import UsersPage from './routes/UsersPage.jsx'
+import { isAdmin } from './auth/session.js'
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <div className="app">
-      <h1>Agentic Workflow Engine</h1>
-      <p>Welcome to the UI.</p>
-      <div className="card">
-        <button onClick={() => setCount((c) => c + 1)}>
-          count is {count}
-        </button>
-      </div>
-    </div>
-  )
+// Route guard: admin-only pages redirect non-admins back to the registry.
+function RequireAdmin({ children }) {
+  return isAdmin() ? children : <Navigate to="/registry" replace />
 }
 
-export default App
+export default function App() {
+  return (
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route index element={<Navigate to="/registry" replace />} />
+        <Route path="registry" element={<RegistryPage />} />
+        <Route path="registry/:name" element={<RegistryPage />} />
+        <Route path="run" element={<RunPage />} />
+        <Route path="run/:name" element={<RunPage />} />
+        <Route
+          path="users"
+          element={
+            <RequireAdmin>
+              <UsersPage />
+            </RequireAdmin>
+          }
+        />
+        <Route path="*" element={<Navigate to="/registry" replace />} />
+      </Route>
+    </Routes>
+  )
+}

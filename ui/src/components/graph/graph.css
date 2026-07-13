@@ -1,0 +1,94 @@
+.graph-scroll {
+  overflow: auto;
+  width: 100%;
+  height: 100%;
+  background: var(--surface-2);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--border) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
+  border-radius: var(--radius);
+}
+
+.dag-graph {
+  display: block;
+  min-width: 100%;
+  padding: 8px;
+}
+
+/* Edges */
+.edge path {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.6;
+  transition: stroke 0.2s;
+}
+.edge.active path {
+  stroke: var(--running);
+  stroke-width: 2.2;
+}
+.arrow-head {
+  fill: var(--border-strong);
+}
+.arrow-head-active {
+  fill: var(--running);
+}
+.edge-label {
+  fill: var(--text-muted);
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 3px;
+}
+
+/* Nodes */
+.node-box {
+  fill: var(--surface);
+  stroke: var(--border-strong);
+  stroke-width: 1.4;
+  filter: drop-shadow(0 1px 2px rgba(16, 20, 32, 0.06));
+  transition: stroke 0.2s, fill 0.2s;
+}
+.node-name {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.node-meta {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.node-topic {
+  fill: var(--text-faint);
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+}
+.marker {
+  fill: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* Cluster tints (ft_* / ag_*) — subtle, per design.md §5a */
+.cluster-ft .node-box {
+  fill: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+.cluster-ag .node-box {
+  fill: color-mix(in srgb, var(--ok) 7%, var(--surface));
+}
+
+/* Run-console highlight */
+.node.active .node-box {
+  stroke: var(--running);
+  stroke-width: 1.8;
+}
+.node.current .node-box {
+  stroke: var(--running);
+  stroke-width: 2.4;
+  filter: drop-shadow(0 0 0 4px color-mix(in srgb, var(--running) 22%, transparent));
+}
