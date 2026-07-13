@@ -1,0 +1,31 @@
+nodes:
+  - name: ingest
+    topic: ingest
+    host: localhost
+    port: 8001
+    entry: true
+    routes:
+      - when: {field: message, op: contains, value: "[CSV]"}
+        to: csv
+      - when: {field: message, op: contains, value: "[PDF]"}
+        to: pdf
+
+  - name: csv
+    topic: csv
+    host: localhost
+    port: 8002
+    routes:
+      - to: archive
+
+  - name: pdf
+    topic: pdf
+    host: localhost
+    port: 8003
+    routes:
+      - to: archive
+
+  - name: archive
+    topic: archive
+    host: localhost
+    port: 8004
+    routes: []

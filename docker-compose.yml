@@ -33,18 +33,32 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: orchestrator
+      POSTGRES_DB: controlplane
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Schema files are applied on first init (empty data dir), in filename order.
-      - ./service_orchestrator/schemas:/docker-entrypoint-initdb.d:ro
+      - ./control_plane/schemas:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d orchestrator"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d controlplane"]
       interval: 5s
       timeout: 3s
       retries: 5
+
+  control_plane:
+    build:
+      context: ./control_plane
+      dockerfile: Dockerfile
+    container_name: control-plane-app
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/controlplane?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   orchestrator:
     build:
@@ -55,11 +69,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      CONTROL_PLANE_URL: http://control_plane:9000
       KAFKA_BROKER: kafka:9092
     depends_on:
-      postgres:
-        condition: service_healthy
+      control_plane:
+        condition: service_started
       kafka:
         condition: service_healthy
 
@@ -73,6 +87,7 @@ services:
       - "3000:80"
     depends_on:
       - orchestrator
+      - control_plane
 
 volumes:
   pgdata:

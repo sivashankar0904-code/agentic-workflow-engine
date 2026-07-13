@@ -5,13 +5,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"orchestrator/internal/dag"
-	"orchestrator/internal/server/handlers"
+	"orchestrator/internal/engine"
 	"orchestrator/internal/server/middleware"
 )
 
-// New builds the Gin engine with CORS, a health check, and the DAG API.
-func New(store *dag.Store) *gin.Engine {
+// New builds the Gin engine with CORS, a health check, and read-only
+// introspection of the flows currently pulled from the Control Plane.
+func New(registry *engine.Registry) *gin.Engine {
 	r := gin.Default()
 	r.Use(middleware.CORS())
 
@@ -19,11 +19,9 @@ func New(store *dag.Store) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "orchestrator"})
 	})
 
-	d := handlers.NewDAG(store)
-	r.GET("/config", d.Get)     // ?name= -> YAML
-	r.POST("/config", d.Upload) // ?name= <- YAML body
-	r.DELETE("/config", d.Delete)
-	r.GET("/dags", d.List)
+	r.GET("/flows", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"flows": registry.Names()})
+	})
 
 	return r
 }
