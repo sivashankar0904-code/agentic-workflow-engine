@@ -132,6 +132,66 @@ func (s *Store) List(ctx context.Context, activeOnly bool) ([]string, error) {
 	return names, rows.Err()
 }
 
+// ListForRole returns the names of stored DAGs visible to roleName: every
+// DAG that has a dag_roles grant for roleName. If activeOnly is true, the
+// result is further restricted to active = true. Filters in SQL (not
+// post-filter) so unauthorized DAGs are simply absent from the list, rather
+// than fetched and then hidden.
+func (s *Store) ListForRole(ctx context.Context, roleName string, activeOnly bool) ([]string, error) {
+	query := `
+		SELECT DISTINCT r.name FROM dag_registry r
+		JOIN dag_roles dr ON dr.dag_id = r.id
+		JOIN roles ro ON ro.id = dr.role_id
+		WHERE ro.name = $1`
+	if activeOnly {
+		query += ` AND r.active = true`
+	}
+	query += ` ORDER BY 1`
+
+	rows, err := s.pool.Query(ctx, query, roleName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
+// IDByName returns the dag_registry id for name, or ErrNotFound.
+func (s *Store) IDByName(ctx context.Context, name string) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `SELECT id FROM dag_registry WHERE name = $1`, name).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
+}
+
+// VisibleToRole reports whether roleName has a dag_roles grant on the DAG
+// named name. Returns ErrNotFound if no such DAG exists.
+func (s *Store) VisibleToRole(ctx context.Context, name, roleName string) (bool, error) {
+	var visible bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM dag_registry r
+			JOIN dag_roles dr ON dr.dag_id = r.id
+			JOIN roles ro ON ro.id = dr.role_id
+			WHERE r.name = $1 AND ro.name = $2
+		)`, name, roleName).Scan(&visible)
+	if err != nil {
+		return false, err
+	}
+	return visible, nil
+}
+
 // SetActive flips the active lifecycle flag for the named DAG. Returns
 // ErrNotFound if no such DAG exists.
 func (s *Store) SetActive(ctx context.Context, name string, active bool) error {
