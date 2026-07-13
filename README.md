@@ -1,29 +1,38 @@
-# Go Agentic AI Orchestrator
+# Agentic Workflow Engine
 
-A Go service that stores workflow DAGs (services + routing rules) in Postgres as a
-first-class graph, and serves them over an HTTP API. DAGs are uploaded and served
-as YAML; internally they are persisted relationally (registry + nodes + edges) so
-the graph can be queried, traversed, and validated in SQL. Multiple named DAGs
-coexist.
+A control-plane/data-plane split for running workflow DAGs: the **Control
+Plane Service** is the single source of truth for DAG definitions, RBAC, and
+active/inactive lifecycle; **`service_orchestrator`** (and, separately,
+`agentic_orchestrator`) are stateless execution engines that pull the DAGs
+they're authorized for and run them. See [docs/architecture.md](docs/architecture.md)
+for the full picture.
 
 ---
 
 ## Architecture
 
 ```
-                    Go Orchestrator (port 8000)
-                              │
-                    ┌─────────┴─────────┐
-                    ▼                   ▼
-              HTTP API            Postgres graph store
-       (/health, /config, /dags)   dag_registry
-                                    ├── nodes  (services / vertices)
-                                    └── edges  (routing rules / edges)
+        Control Plane Service (Go, port 9000)
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+     HTTP API              Postgres graph store
+(/health, /dags)            dag_registry (+ active)
+                             ├── nodes  (graph vertices)
+                             └── edges  (routes[])
+                      │
+         authenticated pull (GET /dags?active=true, GET /dags/{name})
+                      │
+                      ▼
+     service_orchestrator (Go, port 8000)
+     execution engine — no database of its own
 ```
 
-YAML is only the wire format. On `POST`, the YAML is parsed and written into the
-graph tables in a transaction; on `GET`, the graph is reassembled from nodes/edges
-and rendered back to YAML.
+DAGs are uploaded and served as YAML by the Control Plane; internally they are
+persisted relationally (registry + nodes + edges) so the graph can be queried,
+traversed, and validated in SQL. `service_orchestrator` never touches that
+storage — it authenticates to the Control Plane, pulls the active DAGs it's
+allowed to see, and builds a routing table per flow.
 
 ---
 
@@ -31,8 +40,8 @@ and rendered back to YAML.
 
 ```
 agentic-workflow-engine/
-├── service_orchestrator/
-│   ├── cmd/orchestrator/    # main.go — entrypoint: opens pg pool, wires deps
+├── control_plane/           # DAG registry — the only service with a database
+│   ├── cmd/controlplane/    # main.go — entrypoint: opens pg pool, wires deps
 │   ├── schemas/             # SQL table definitions (apply manually)
 │   │   ├── 01_dag_registry.sql
 │   │   ├── 02_nodes.sql
@@ -40,106 +49,113 @@ agentic-workflow-engine/
 │   ├── mock/dag.yaml        # example DAG (upload payload)
 │   ├── internal/
 │   │   ├── config/          # env config (DATABASE_URL)
-│   │   ├── dag/              # domain: types, YAML transform, Postgres Store (CRUD)
-│   │   └── server/           # gin engine, handlers, middleware
-│   ├── go.mod
-│   ├── go.sum
+│   │   ├── dag/             # domain: types, YAML transform, Postgres Store (CRUD)
+│   │   └── server/          # gin engine, handlers, middleware
+│   ├── go.mod / go.sum
 │   └── Dockerfile
-└── docker-compose.yml       # postgres + orchestrator
+├── service_orchestrator/    # execution engine — service routing runtime
+│   ├── cmd/orchestrator/    # main.go — entrypoint: pulls DAGs, builds registry
+│   ├── internal/
+│   │   ├── config/          # env config (CONTROL_PLANE_URL)
+│   │   ├── dag/             # domain: YAML wire types (read-only client side)
+│   │   ├── controlplane/    # HTTP client for the Control Plane's DAG API
+│   │   ├── engine/          # Flow (routing table) + Registry (active flows)
+│   │   └── server/          # gin engine, handlers, middleware
+│   ├── go.mod / go.sum
+│   └── Dockerfile
+└── docker-compose.yml       # postgres + control_plane + orchestrator + ui
 ```
 
 ---
 
-## Graph Model
-
-| Table | Role |
-|---|---|
-| `dag_registry` | one row per named DAG |
-| `nodes` | services — graph vertices, unique by `(dag_id, name)` |
-| `edges` | routing rules — graph edges, referencing nodes by id (FK) |
-
-Because edges reference nodes by foreign key, the graph is enforced by the DB and
-queryable — e.g. reachability from a source node via a recursive CTE, cycle
-detection, orphan detection.
-
-The routing `source` and each rule `target` are topic strings; they are resolved
-to nodes by matching `nodes.topic`.
-
----
-
-## DAG Payload (`dag.yaml`)
+## The DAG Contract
 
 ```yaml
-services:
-  - name: mock_service_1
+nodes:
+  - name: ingest
+    topic: ingest
     host: localhost
     port: 8001
-    topic: mock-service-1
+    entry: true
+    routes:
+      - when: {field: message, op: contains, value: "[CSV]"}
+        to: csv
+      - when: {field: message, op: contains, value: "[PDF]"}
+        to: pdf
 
-routing:
-  source: mock-service-1       # source node (by topic)
-  rules:
-    - condition:
-        field: message         # JSON field to match on
-        contains: "[CSV]"
-      target: mock-service-2   # target node (by topic)
+  - name: csv
+    topic: csv
+    host: localhost
+    port: 8002
+    routes:
+      - to: archive
 
-    - condition:
-        field: message
-        contains: "[Excel]"
-      target: mock-service-3
+  - name: pdf
+    topic: pdf
+    host: localhost
+    port: 8003
+    routes:
+      - to: archive
 
-    - condition:
-        field: message
-        contains: "[PDF]"
-      target: mock-service-4
+  - name: archive
+    topic: archive
+    host: localhost
+    port: 8004
+    routes: []
 ```
 
----
-
-## Prerequisites
-
-- Go 1.21+
-- PostgreSQL (schema files in `service_orchestrator/schemas/` applied manually, in numeric order)
+One top-level `nodes[]` list; each node declares its own outgoing `routes[]`.
+See [docs/architecture.md](docs/architecture.md) for the full schema
+invariants (exactly one `entry`, terminal nodes, `tools[]`, named `op`s).
 
 ---
 
 ## Running
 
-### Locally
-
-```powershell
-# Apply schemas once (registry -> nodes -> edges order matters):
-psql "$env:DATABASE_URL" -f service_orchestrator/schemas/01_dag_registry.sql
-psql "$env:DATABASE_URL" -f service_orchestrator/schemas/02_nodes.sql
-psql "$env:DATABASE_URL" -f service_orchestrator/schemas/03_edges.sql
-
-cd service_orchestrator
-go run ./cmd/orchestrator
-```
-
-The service listens on port 8000. Connection string comes from `DATABASE_URL`
-(default `postgres://postgres:postgres@localhost:5432/orchestrator?sslmode=disable`).
-
 ### With Docker Compose
-
-Compose starts Postgres (applying `schemas/` on first init) and the orchestrator:
 
 ```powershell
 docker compose up --build
 ```
 
+Starts Postgres (schema applied on first init), the Control Plane on `:9000`,
+`service_orchestrator` on `:8000`, and the UI on `:3000`.
+
+### Locally
+
+```powershell
+# Apply schemas once (registry -> nodes -> edges order matters):
+psql "$env:DATABASE_URL" -f control_plane/schemas/01_dag_registry.sql
+psql "$env:DATABASE_URL" -f control_plane/schemas/02_nodes.sql
+psql "$env:DATABASE_URL" -f control_plane/schemas/03_edges.sql
+
+cd control_plane
+go run ./cmd/controlplane   # listens on :9000, needs DATABASE_URL
+
+cd ../service_orchestrator
+go run ./cmd/orchestrator   # listens on :8000, needs CONTROL_PLANE_URL
+```
+
 ---
 
-## API
+## API — Control Plane (`:9000`)
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
-| `GET` | `/dags` | List all stored DAG names |
-| `GET` | `/config?name=<dag>` | Returns the named DAG as YAML |
-| `POST` | `/config?name=<dag>` | Upload YAML; creates or replaces the named DAG |
-| `DELETE` | `/config?name=<dag>` | Delete the named DAG (nodes/edges cascade) |
+| `GET` | `/dags` | List all stored DAG names (`?active=true` to filter) |
+| `GET` | `/dags/{name}` | Returns the named DAG as YAML |
+| `POST` | `/dags/{name}` | Upload YAML; creates or replaces the named DAG (inactive by default) |
+| `DELETE` | `/dags/{name}` | Delete the named DAG (nodes/edges cascade) |
+| `POST` | `/dags/{name}/activate` | Mark the DAG active — served to execution engines |
+| `POST` | `/dags/{name}/deactivate` | Mark the DAG inactive — retained, not served |
+
+## API — `service_orchestrator` (`:8000`)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `GET` | `/flows` | Names of flows currently built from the Control Plane's active DAGs |
 
 ---
 
@@ -147,5 +163,6 @@ docker compose up --build
 
 | Layer | Technology |
 |---|---|
-| Service | Go, [gin](https://github.com/gin-gonic/gin), gopkg.in/yaml.v3 |
-| DAG storage | PostgreSQL via [pgx](https://github.com/jackc/pgx) (graph: registry + nodes + edges) |
+| Control Plane | Go, [gin](https://github.com/gin-gonic/gin), gopkg.in/yaml.v3, [pgx](https://github.com/jackc/pgx) |
+| Execution engine | Go, gin, gopkg.in/yaml.v3 (no database) |
+| DAG storage | PostgreSQL, owned exclusively by the Control Plane |

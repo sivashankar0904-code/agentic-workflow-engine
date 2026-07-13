@@ -5,14 +5,14 @@ import "os"
 // Config holds all runtime configuration, sourced from the environment with
 // static fallbacks.
 type Config struct {
-	// Base URL of the Control Plane Service, the sole source of DAG definitions.
-	ControlPlaneURL string
+	// Postgres connection string (pgx/libpq DSN or URL).
+	DatabaseURL string
 }
 
 // Load reads configuration from the environment, applying static defaults.
 func Load() Config {
 	return Config{
-		ControlPlaneURL: env("CONTROL_PLANE_URL", "http://localhost:9000"),
+		DatabaseURL: env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/controlplane?sslmode=disable"),
 	}
 }
 

@@ -2,10 +2,9 @@ package dag
 
 // ── YAML wire schema ──────────────────────────────────────────────────────────
 //
-// The standardized DAG contract served by the control plane (see
-// docs/architecture.md): one top-level nodes[] list, where each node declares
-// its own outgoing routes[]. This engine only ever reads DAGs — the control
-// plane is the sole owner of storage.
+// This is the standardized DAG contract (see docs/architecture.md): one
+// top-level nodes[] list, where each node declares its own outgoing routes[].
+// name/active/RBAC are control-plane-side and never appear in this body.
 
 type When struct {
 	Field string `yaml:"field" json:"field"`
