@@ -1,0 +1,208 @@
+[
+  {
+    "name": "csv-flow",
+    "active": true,
+    "owner": "alice",
+    "allowedRoles": ["engines", "ops"],
+    "description": "File-type routing: ingest a document and archive by format.",
+    "updatedAt": "2026-07-10T14:22:00Z",
+    "nodes": [
+      {
+        "name": "ingest",
+        "topic": "ingest",
+        "host": "localhost",
+        "port": 8001,
+        "entry": true,
+        "routes": [
+          { "when": { "field": "message", "op": "contains", "value": "[CSV]" }, "to": "csv" },
+          { "when": { "field": "message", "op": "contains", "value": "[PDF]" }, "to": "pdf" }
+        ]
+      },
+      {
+        "name": "csv",
+        "topic": "csv",
+        "host": "localhost",
+        "port": 8002,
+        "tools": ["parse_csv"],
+        "routes": [{ "to": "archive" }]
+      },
+      {
+        "name": "pdf",
+        "topic": "pdf",
+        "host": "localhost",
+        "port": 8003,
+        "routes": [{ "to": "archive" }]
+      },
+      {
+        "name": "archive",
+        "topic": "archive",
+        "host": "localhost",
+        "port": 8004,
+        "routes": []
+      }
+    ]
+  },
+  {
+    "name": "invoice-flow",
+    "active": true,
+    "owner": "alice",
+    "allowedRoles": ["engines", "ops"],
+    "description": "Invoice intake, validation, and posting to the ledger.",
+    "updatedAt": "2026-07-11T09:05:00Z",
+    "nodes": [
+      {
+        "name": "receive",
+        "topic": "invoice-receive",
+        "host": "localhost",
+        "port": 8101,
+        "entry": true,
+        "routes": [{ "to": "validate" }]
+      },
+      {
+        "name": "validate",
+        "topic": "invoice-validate",
+        "host": "localhost",
+        "port": 8102,
+        "routes": [
+          { "when": { "field": "status", "op": "equals", "value": "valid" }, "to": "post" },
+          { "when": { "field": "status", "op": "equals", "value": "invalid" }, "to": "reject" }
+        ]
+      },
+      {
+        "name": "post",
+        "topic": "invoice-post",
+        "host": "localhost",
+        "port": 8103,
+        "routes": []
+      },
+      {
+        "name": "reject",
+        "topic": "invoice-reject",
+        "host": "localhost",
+        "port": 8104,
+        "routes": []
+      }
+    ]
+  },
+  {
+    "name": "support-triage",
+    "active": false,
+    "owner": "carol",
+    "allowedRoles": ["ops"],
+    "description": "Agentic support triage: classify intent and route to an agent.",
+    "updatedAt": "2026-06-28T16:40:00Z",
+    "nodes": [
+      {
+        "name": "dispatch",
+        "topic": "dispatch",
+        "host": "localhost",
+        "port": 8000,
+        "entry": true,
+        "routes": [
+          { "when": { "field": "kind", "op": "equals", "value": "file" }, "to": "ft_ingest" },
+          { "when": { "field": "kind", "op": "equals", "value": "support" }, "to": "ag_triage" }
+        ]
+      },
+      {
+        "name": "ft_ingest",
+        "topic": "ft-ingest",
+        "host": "localhost",
+        "port": 8001,
+        "routes": [
+          { "when": { "field": "message", "op": "contains", "value": "[CSV]" }, "to": "ft_csv" },
+          { "when": { "field": "message", "op": "contains", "value": "[PDF]" }, "to": "ft_pdf" }
+        ]
+      },
+      {
+        "name": "ft_csv",
+        "topic": "ft-csv",
+        "host": "localhost",
+        "port": 8002,
+        "routes": [{ "to": "ft_archive" }]
+      },
+      {
+        "name": "ft_pdf",
+        "topic": "ft-pdf",
+        "host": "localhost",
+        "port": 8003,
+        "routes": [{ "to": "ft_archive" }]
+      },
+      {
+        "name": "ft_archive",
+        "topic": "ft-archive",
+        "host": "localhost",
+        "port": 8004,
+        "routes": []
+      },
+      {
+        "name": "ag_triage",
+        "topic": "agent-triage",
+        "host": "localhost",
+        "port": 9101,
+        "tools": ["classify_intent"],
+        "routes": [
+          { "when": { "field": "intent", "op": "equals", "value": "refund" }, "to": "ag_refund" },
+          { "when": { "field": "intent", "op": "equals", "value": "technical" }, "to": "ag_tech" },
+          { "to": "ag_general" }
+        ]
+      },
+      {
+        "name": "ag_refund",
+        "topic": "agent-refund",
+        "host": "localhost",
+        "port": 9102,
+        "tools": ["lookup_order", "issue_refund"],
+        "routes": [{ "to": "ag_summarize" }]
+      },
+      {
+        "name": "ag_tech",
+        "topic": "agent-tech",
+        "host": "localhost",
+        "port": 9103,
+        "tools": ["search_kb"],
+        "routes": [{ "to": "ag_summarize" }]
+      },
+      {
+        "name": "ag_general",
+        "topic": "agent-general",
+        "host": "localhost",
+        "port": 9104,
+        "tools": ["search_kb"],
+        "routes": [{ "to": "ag_summarize" }]
+      },
+      {
+        "name": "ag_summarize",
+        "topic": "agent-summarize",
+        "host": "localhost",
+        "port": 9105,
+        "tools": [],
+        "routes": []
+      }
+    ]
+  },
+  {
+    "name": "legacy-flow",
+    "active": false,
+    "owner": "carol",
+    "allowedRoles": ["ops"],
+    "description": "Retired single-hop passthrough kept for reference.",
+    "updatedAt": "2026-04-02T11:12:00Z",
+    "nodes": [
+      {
+        "name": "intake",
+        "topic": "legacy-intake",
+        "host": "localhost",
+        "port": 8201,
+        "entry": true,
+        "routes": [{ "to": "sink" }]
+      },
+      {
+        "name": "sink",
+        "topic": "legacy-sink",
+        "host": "localhost",
+        "port": 8202,
+        "routes": []
+      }
+    ]
+  }
+]

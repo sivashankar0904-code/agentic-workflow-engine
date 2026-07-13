@@ -1,6 +1,31 @@
 name: orchestrator
 
 services:
+  kafka:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: orchestrator-kafka
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=300M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr=internal://kafka:9092,external://localhost:29092
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafkadata:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   postgres:
     image: postgres:16-alpine
     container_name: orchestrator-postgres
@@ -31,8 +56,11 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      KAFKA_BROKER: kafka:9092
     depends_on:
       postgres:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
 
   ui:
@@ -48,3 +76,4 @@ services:
 
 volumes:
   pgdata:
+  kafkadata:

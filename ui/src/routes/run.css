@@ -1,0 +1,109 @@
+.run-picker {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.run-tab {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+.run-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.run-tab.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+.run-grid {
+  display: grid;
+  grid-template-columns: minmax(340px, 440px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.msg-row {
+  display: flex;
+  gap: 10px;
+}
+.msg-input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+}
+.msg-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.flow-status {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.flow-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.flow-arrow {
+  color: var(--text-faint);
+  margin: 0 2px;
+}
+
+.result {
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.run-graph {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--header-h) - 190px);
+  min-height: 420px;
+}
+
+@media (max-width: 1080px) {
+  .run-grid {
+    grid-template-columns: 1fr;
+  }
+  .run-graph {
+    height: auto;
+    min-height: 400px;
+  }
+}

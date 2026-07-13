@@ -1,0 +1,34 @@
+{
+  "csv-flow": {
+    "sampleMessage": "[CSV] q3-report.csv",
+    "path": ["ingest", "csv", "archive"],
+    "result": {
+      "status": "completed",
+      "output": { "rows": 4211, "format": "csv", "archived": true }
+    }
+  },
+  "invoice-flow": {
+    "sampleMessage": "{ \"status\": \"valid\", \"amount\": 1240.00 }",
+    "path": ["receive", "validate", "post"],
+    "result": {
+      "status": "completed",
+      "output": { "posted": true, "ledgerRef": "INV-2026-0714" }
+    }
+  },
+  "support-triage": {
+    "sampleMessage": "{ \"kind\": \"support\", \"intent\": \"refund\" }",
+    "path": ["dispatch", "ag_triage", "ag_refund", "ag_summarize"],
+    "result": {
+      "status": "completed",
+      "output": { "resolution": "refund issued", "orderRef": "ORD-88213" }
+    }
+  },
+  "legacy-flow": {
+    "sampleMessage": "ping",
+    "path": ["intake", "sink"],
+    "result": {
+      "status": "completed",
+      "output": { "ok": true }
+    }
+  }
+}
