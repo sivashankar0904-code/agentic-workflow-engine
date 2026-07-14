@@ -35,8 +35,16 @@ func New(dagStore *dag.Store, userStore *users.Store, jwtSecret string) *gin.Eng
 	r.POST("/login", sess.Login)
 
 	requireAuth := middleware.RequireAuth(jwtSecret, userStore)
+	requireAuthOrService := middleware.RequireAuthOrServiceKey(jwtSecret, userStore)
 	for _, e := range routeperms.Routes(d, u, ro, sess) {
-		r.Handle(e.Method, e.Path, requireAuth, middleware.RequirePermission(e.Permission), e.Handler)
+		authGate := requireAuth
+		if e.AllowServiceKey {
+			// A service key implies full read access, so the per-route
+			// RequirePermission check is skipped for service callers; the
+			// combined middleware itself gates access.
+			authGate = requireAuthOrService
+		}
+		r.Handle(e.Method, e.Path, authGate, middleware.RequirePermission(e.Permission), e.Handler)
 	}
 
 	// Service-to-service: a separate credential (api_key, no role), so

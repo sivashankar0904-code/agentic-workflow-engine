@@ -29,13 +29,16 @@ const (
 )
 
 // Entry is one registered route: method, Gin path pattern, the permission
-// required to call it ("" = any authenticated user, no specific grant), and
-// the handler itself.
+// required to call it ("" = any authenticated user, no specific grant), the
+// handler itself, and whether a registered service (X-Service-Key) may call
+// it in place of a logged-in user — true only for the DAG read routes the
+// execution engines pull from.
 type Entry struct {
-	Method     string
-	Path       string
-	Permission string
-	Handler    gin.HandlerFunc
+	Method          string
+	Path            string
+	Permission      string
+	Handler         gin.HandlerFunc
+	AllowServiceKey bool
 }
 
 // Routes returns every route this service exposes to authenticated users
@@ -44,24 +47,26 @@ type Entry struct {
 // different credential — see server.go for why).
 func Routes(d *handlers.DAG, u *handlers.Users, ro *handlers.Roles, sess *handlers.Session) []Entry {
 	return []Entry{
-		{"GET", "/dags", DagReadList, d.List},
-		{"GET", "/dags/:name", DagRead, d.Get},
-		{"POST", "/dags/:name", DagCreate, d.Upload},
-		{"DELETE", "/dags/:name", DagDelete, d.Delete},
-		{"POST", "/dags/:name/activate", DagPatch, d.Activate},
-		{"POST", "/dags/:name/deactivate", DagPatch, d.Deactivate},
-		{"PATCH", "/dags/:name/roles", DagPatch, d.SetRoles},
-		{"GET", "/users", UserReadList, u.List},
-		{"POST", "/users", UserCreate, u.Create},
-		{"PATCH", "/users/:username/role", UserUpdate, u.SetRole},
-		{"PATCH", "/users/:username/active", UserUpdate, u.SetActive},
-		{"GET", "/roles", RoleCreate, ro.List},
-		{"POST", "/roles", RoleCreate, ro.Create},
-		{"DELETE", "/roles/:name", RoleCreate, ro.Delete},
-		{"PUT", "/roles/:name/permissions", RoleCreate, ro.SetPermissions},
-		{"PUT", "/roles/:name/permission-groups", RoleCreate, ro.SetPermissionGroup},
-		{"GET", "/permissions", RoleCreate, ro.ListPermissions},
-		{"GET", "/me", "", sess.Me},
-		{"POST", "/me/password", "", sess.ChangePassword},
+		// DAG read routes accept a service key (engines pull these) or a user JWT.
+		{Method: "GET", Path: "/dags", Permission: DagReadList, Handler: d.List, AllowServiceKey: true},
+		{Method: "GET", Path: "/dags/:id", Permission: DagRead, Handler: d.Get, AllowServiceKey: true},
+		// DAG mutations: user JWT only.
+		{Method: "POST", Path: "/dags/name/:name", Permission: DagCreate, Handler: d.Upload},
+		{Method: "DELETE", Path: "/dags/:id", Permission: DagDelete, Handler: d.Delete},
+		{Method: "POST", Path: "/dags/:id/activate", Permission: DagPatch, Handler: d.Activate},
+		{Method: "POST", Path: "/dags/:id/deactivate", Permission: DagPatch, Handler: d.Deactivate},
+		{Method: "PATCH", Path: "/dags/:id/roles", Permission: DagPatch, Handler: d.SetRoles},
+		{Method: "GET", Path: "/users", Permission: UserReadList, Handler: u.List},
+		{Method: "POST", Path: "/users", Permission: UserCreate, Handler: u.Create},
+		{Method: "PATCH", Path: "/users/:username/role", Permission: UserUpdate, Handler: u.SetRole},
+		{Method: "PATCH", Path: "/users/:username/active", Permission: UserUpdate, Handler: u.SetActive},
+		{Method: "GET", Path: "/roles", Permission: RoleCreate, Handler: ro.List},
+		{Method: "POST", Path: "/roles", Permission: RoleCreate, Handler: ro.Create},
+		{Method: "DELETE", Path: "/roles/:name", Permission: RoleCreate, Handler: ro.Delete},
+		{Method: "PUT", Path: "/roles/:name/permissions", Permission: RoleCreate, Handler: ro.SetPermissions},
+		{Method: "PUT", Path: "/roles/:name/permission-groups", Permission: RoleCreate, Handler: ro.SetPermissionGroup},
+		{Method: "GET", Path: "/permissions", Permission: RoleCreate, Handler: ro.ListPermissions},
+		{Method: "GET", Path: "/me", Permission: "", Handler: sess.Me},
+		{Method: "POST", Path: "/me/password", Permission: "", Handler: sess.ChangePassword},
 	}
 }

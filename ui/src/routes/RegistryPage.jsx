@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getDag, listDags, setDagActive } from '../api/dags.js'
-import { hasRole } from '../auth/session.js'
+import { hasPermission } from '../auth/session.js'
 import DagGraph from '../components/graph/DagGraph.jsx'
 import UploadDagModal from '../components/UploadDagModal.jsx'
 import './registry.css'
 
+const PERM_PATCH = 'control_plane.dag_registry.dag.patch'
+const PERM_CREATE = 'control_plane.dag_registry.dag.create'
+
 export default function RegistryPage() {
-  const { name } = useParams()
-  return name ? <DagDetail name={name} /> : <RegistryTable />
+  const { id } = useParams()
+  return id ? <DagDetail id={id} /> : <RegistryTable />
 }
 
 // ── Governance table (design.md §4) ──────────────────────────────────────
@@ -17,7 +20,8 @@ function RegistryTable() {
   const [busy, setBusy] = useState(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const navigate = useNavigate()
-  const canGovern = hasRole('ops') || hasRole('admin')
+  const canCreate = hasPermission(PERM_CREATE)
+  const canPatch = hasPermission(PERM_PATCH)
 
   const load = () => {
     setDags(null)
@@ -26,8 +30,8 @@ function RegistryTable() {
   useEffect(load, [])
 
   async function toggle(dag) {
-    setBusy(dag.name)
-    await setDagActive(dag.name, !dag.active)
+    setBusy(dag.id)
+    await setDagActive(dag.id, !dag.active)
     setBusy(null)
     load()
   }
@@ -42,21 +46,24 @@ function RegistryTable() {
             engines; inactive ones are retained but not run.
           </p>
         </div>
-        {canGovern && (
+        {canCreate && (
           <button className="btn btn-primary" onClick={() => setUploadOpen(true)}>
             + New DAG
           </button>
         )}
       </div>
 
-      {uploadOpen && (
-        <UploadDagModal onClose={() => setUploadOpen(false)} />
-      )}
+      {uploadOpen && <UploadDagModal onClose={() => setUploadOpen(false)} onSaved={load} />}
 
       <div className="card">
         {dags === null ? (
           <div className="loading">
             <div className="spinner" />
+          </div>
+        ) : dags.length === 0 ? (
+          <div className="empty">
+            <strong>No DAGs yet</strong>
+            <p className="muted">Upload a workflow definition to get started.</p>
           </div>
         ) : (
           <table className="table">
@@ -64,22 +71,19 @@ function RegistryTable() {
               <tr>
                 <th>Name</th>
                 <th>Status</th>
-                <th>Allowed roles</th>
-                <th>Owner</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {dags.map((dag) => (
-                <tr key={dag.name}>
+                <tr key={dag.id}>
                   <td>
                     <button
                       className="link-name"
-                      onClick={() => navigate(`/registry/${dag.name}`)}
+                      onClick={() => navigate(`/registry/${dag.id}`)}
                     >
                       {dag.name}
                     </button>
-                    <div className="cell-sub">{dag.description}</div>
                   </td>
                   <td>
                     <span className={`badge ${dag.active ? 'on' : 'off'}`}>
@@ -88,23 +92,13 @@ function RegistryTable() {
                     </span>
                   </td>
                   <td>
-                    <div className="chip-row">
-                      {dag.allowedRoles.map((r) => (
-                        <span key={r} className="chip">
-                          {r}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="muted">{dag.owner}</td>
-                  <td>
                     <div className="actions">
-                      {canGovern && (
+                      {canPatch && (
                         <button
                           className={`btn btn-sm ${
                             dag.active ? 'btn-danger' : 'btn-primary'
                           }`}
-                          disabled={busy === dag.name}
+                          disabled={busy === dag.id}
                           onClick={() => toggle(dag)}
                         >
                           {dag.active ? 'Deactivate' : 'Activate'}
@@ -112,9 +106,9 @@ function RegistryTable() {
                       )}
                       <button
                         className="btn btn-sm"
-                        onClick={() => navigate(`/registry/${dag.name}`)}
+                        onClick={() => navigate(`/registry/${dag.id}`)}
                       >
-                        Edit
+                        View
                       </button>
                     </div>
                   </td>
@@ -128,8 +122,8 @@ function RegistryTable() {
   )
 }
 
-// ── DAG detail: YAML editor + graph (design.md §5) ───────────────────────
-function DagDetail({ name }) {
+// ── DAG detail: YAML + graph (design.md §5) ──────────────────────────────
+function DagDetail({ id }) {
   const [dag, setDag] = useState(null)
   const [yaml, setYaml] = useState('')
   const [notFound, setNotFound] = useState(false)
@@ -138,7 +132,7 @@ function DagDetail({ name }) {
   useEffect(() => {
     setDag(null)
     setNotFound(false)
-    getDag(name).then((d) => {
+    getDag(id).then((d) => {
       if (!d) {
         setNotFound(true)
         return
@@ -146,16 +140,14 @@ function DagDetail({ name }) {
       setDag(d)
       setYaml(d.yaml)
     })
-  }, [name])
+  }, [id])
 
   if (notFound) {
     return (
       <div className="card">
         <div className="empty">
           <strong>DAG not found</strong>
-          <p className="muted">
-            No workflow named “{name}” is visible to you.
-          </p>
+          <p className="muted">No workflow with this id is visible to you.</p>
           <button className="btn" onClick={() => navigate('/registry')}>
             Back to registry
           </button>
@@ -182,20 +174,7 @@ function DagDetail({ name }) {
             Registry
           </button>
           <span className="crumb-sep">/</span>
-          <h1 style={{ display: 'inline-block' }}>{dag.name}</h1>
-          <p>{dag.description}</p>
-        </div>
-        <div className="actions">
-          <span className={`badge ${dag.active ? 'on' : 'off'}`}>
-            <span className={`dot ${dag.active ? 'on' : 'off'}`} />
-            {dag.active ? 'Active' : 'Inactive'}
-          </span>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate(`/run/${dag.name}`)}
-          >
-            Run ▸
-          </button>
+          <h1 style={{ display: 'inline-block' }}>DAG #{dag.id}</h1>
         </div>
       </div>
 
@@ -203,9 +182,6 @@ function DagDetail({ name }) {
         <div className="card editor-pane">
           <div className="card-head">
             <h2>Definition (YAML)</h2>
-            <span className="muted mono" style={{ fontSize: 12 }}>
-              owner: {dag.owner}
-            </span>
           </div>
           <textarea
             className="yaml-editor"
@@ -214,12 +190,8 @@ function DagDetail({ name }) {
             spellCheck={false}
           />
           <div className="editor-foot">
-            <button className="btn btn-sm">Validate</button>
-            <button className="btn btn-primary btn-sm" disabled>
-              Save
-            </button>
             <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>
-              Read-only · no backend yet
+              Read-only view
             </span>
           </div>
         </div>

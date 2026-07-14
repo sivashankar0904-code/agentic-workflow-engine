@@ -1,56 +1,76 @@
 import { useEffect, useState } from 'react'
-import { listDags } from '../api/dags.js'
+import {
+  listRoles,
+  listPermissions,
+  createRole,
+  deleteRole,
+  setRolePermissions,
+} from '../api/roles.js'
 
-// Role-level resource allocation: a role × DAG matrix mirroring each DAG's
-// allowedRoles[] (design.md §4, architecture.md's dag_registry RBAC table).
-// Roles themselves are customizable — add a new role (appends a column) or
-// remove one (drops its column and grants). UI only — everything here is
-// local state; nothing is persisted (no backend yet).
+// Role × permission matrix (design.md §8), backed by the Control Plane.
+// Rows are permissions grouped service → feature_group → feature; columns are
+// roles. Ticking a cell replaces that role's exact permission set. Roles are
+// customizable — add or remove one. All changes persist immediately; the
+// server re-enforces.
 export default function RolesAccessPanel() {
-  const [dags, setDags] = useState(null)
-  const [roles, setRoles] = useState([])
-  const [grants, setGrants] = useState({}) // { [dagName]: Set<role> }
+  const [roles, setRoles] = useState(null)
+  const [perms, setPerms] = useState([])
   const [newRole, setNewRole] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    listDags({ activeOnly: false }).then((rows) => {
-      setDags(rows)
-      setRoles([...new Set(rows.flatMap((d) => d.allowedRoles))].sort())
-      const initial = {}
-      for (const dag of rows) initial[dag.name] = new Set(dag.allowedRoles)
-      setGrants(initial)
-    })
-  }, [])
+  const load = () => {
+    setError('')
+    Promise.all([listRoles(), listPermissions()])
+      .then(([r, p]) => {
+        setRoles(r)
+        setPerms(p)
+      })
+      .catch((err) => setError(err.message))
+  }
+  useEffect(load, [])
 
-  function toggle(dagName, role) {
-    setGrants((prev) => {
-      const next = { ...prev, [dagName]: new Set(prev[dagName]) }
-      next[dagName].has(role) ? next[dagName].delete(role) : next[dagName].add(role)
-      return next
-    })
+  // Toggle one permission for one role, then persist the role's full new set.
+  async function toggle(role, permId) {
+    const current = new Set(role.permissionIds())
+    if (current.has(permId)) current.delete(permId)
+    else current.add(permId)
+    setSaving(true)
+    setError('')
+    try {
+      await setRolePermissions(role.name, [...current])
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  function addRole() {
+  async function addRole() {
     const name = newRole.trim().toLowerCase()
-    if (!name || roles.includes(name)) return
-    setRoles((prev) => [...prev, name].sort())
-    setNewRole('')
+    if (!name) return
+    setError('')
+    try {
+      await createRole(name)
+      setNewRole('')
+      load()
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
-  function removeRole(role) {
-    setRoles((prev) => prev.filter((r) => r !== role))
-    setGrants((prev) => {
-      const next = {}
-      for (const [dagName, set] of Object.entries(prev)) {
-        const copy = new Set(set)
-        copy.delete(role)
-        next[dagName] = copy
-      }
-      return next
-    })
+  async function removeRole(name) {
+    setError('')
+    try {
+      await deleteRole(name)
+      load()
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
-  if (dags === null) {
+  if (roles === null) {
     return (
       <div className="card">
         <div className="loading">
@@ -60,26 +80,44 @@ export default function RolesAccessPanel() {
     )
   }
 
+  // Decorate each role with a permission-id lookup derived from its dotted
+  // permission names against the permission catalog.
+  const permIdByName = new Map(perms.map((p) => [p.name, p.id]))
+  const decorated = roles.map((r) => ({
+    ...r,
+    permissionIds: () => (r.permissions || []).map((n) => permIdByName.get(n)).filter(Boolean),
+    hasPerm: (permName) => (r.permissions || []).includes(permName),
+  }))
+
   return (
     <div className="card">
       <div className="card-head">
         <h2>Role access matrix</h2>
         <span className="muted" style={{ fontSize: 12 }}>
-          {dags.length} DAGs × {roles.length} roles
+          {perms.length} permissions × {roles.length} roles
+          {saving ? ' · saving…' : ''}
         </span>
       </div>
 
+      {error && (
+        <div className="alert alert-error" role="alert" style={{ margin: 12 }}>
+          {error}
+        </div>
+      )}
+
       <div className="role-chip-row">
-        {roles.map((role) => (
-          <span key={role} className="role-chip">
-            {role}
-            <button
-              onClick={() => removeRole(role)}
-              aria-label={`Remove role ${role}`}
-              title={`Remove role ${role}`}
-            >
-              ✕
-            </button>
+        {decorated.map((role) => (
+          <span key={role.name} className="role-chip">
+            {role.name}
+            {role.name !== 'admin' && (
+              <button
+                onClick={() => removeRole(role.name)}
+                aria-label={`Remove role ${role.name}`}
+                title={`Remove role ${role.name}`}
+              >
+                ✕
+              </button>
+            )}
           </span>
         ))}
         <span className="role-add">
@@ -100,38 +138,39 @@ export default function RolesAccessPanel() {
           <table className="table matrix-table">
             <thead>
               <tr>
-                <th className="matrix-corner">DAG</th>
-                {roles.map((role) => (
-                  <th key={role} className="matrix-role-head">
-                    {role}
+                <th className="matrix-corner">Permission</th>
+                {decorated.map((role) => (
+                  <th key={role.name} className="matrix-role-head">
+                    {role.name}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {dags.map((dag) => (
-                <tr key={dag.name}>
+              {perms.map((perm) => (
+                <tr key={perm.id}>
                   <td>
-                    <div className="cell-strong">{dag.name}</div>
-                    <span
-                      className={`badge ${dag.active ? 'on' : 'off'}`}
-                      style={{ marginTop: 4 }}
-                    >
-                      <span className={`dot ${dag.active ? 'on' : 'off'}`} />
-                      {dag.active ? 'Active' : 'Inactive'}
-                    </span>
+                    <div className="cell-strong mono" style={{ fontSize: 12 }}>
+                      {perm.featureGroup}.{perm.feature}.{perm.action}
+                    </div>
+                    <div className="cell-sub">{perm.serviceKey}</div>
                   </td>
-                  {roles.map((role) => (
-                    <td key={role} className="matrix-cell">
-                      <label className="matrix-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={grants[dag.name]?.has(role) ?? false}
-                          onChange={() => toggle(dag.name, role)}
-                        />
-                      </label>
-                    </td>
-                  ))}
+                  {decorated.map((role) => {
+                    const admin = role.name === 'admin'
+                    return (
+                      <td key={role.name} className="matrix-cell">
+                        <label className="matrix-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={role.hasPerm(perm.name)}
+                            disabled={admin || saving}
+                            title={admin ? 'admin always has every permission' : ''}
+                            onChange={() => toggle(role, perm.id)}
+                          />
+                        </label>
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -141,15 +180,8 @@ export default function RolesAccessPanel() {
 
       <div className="editor-foot">
         <span className="muted" style={{ fontSize: 12 }}>
-          Checked = role can see &amp; run this DAG. Not saved — no backend yet.
+          Checked = the role holds that permission. Changes save immediately.
         </span>
-        <button
-          className="btn btn-primary btn-sm"
-          disabled
-          style={{ marginLeft: 'auto' }}
-        >
-          Save changes
-        </button>
       </div>
     </div>
   )

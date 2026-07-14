@@ -9,7 +9,7 @@ export default function Sidebar() {
   const [activeOnly, setActiveOnly] = useState(true)
   const [dags, setDags] = useState(null)
   const navigate = useNavigate()
-  const { name: selected } = useParams()
+  const { id: selected } = useParams()
 
   useEffect(() => {
     let alive = true
@@ -51,9 +51,9 @@ export default function Sidebar() {
         <div className="dag-list">
           {dags.map((dag) => (
             <div
-              key={dag.name}
-              className={`dag-item ${selected === dag.name ? 'active' : ''}`}
-              onClick={() => navigate(`/registry/${dag.name}`)}
+              key={dag.id}
+              className={`dag-item ${String(selected) === String(dag.id) ? 'active' : ''}`}
+              onClick={() => navigate(`/registry/${dag.id}`)}
             >
               <span className="name">{dag.name}</span>
               <span

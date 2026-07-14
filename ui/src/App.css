@@ -88,6 +88,76 @@
 .account:hover {
   background: var(--surface-hover);
 }
+
+/* Account dropdown menu */
+.account-wrap {
+  position: relative;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+.account-menu-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.account-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.account-menu-item:hover {
+  background: var(--surface-hover);
+}
+.account-menu-item.danger {
+  color: var(--danger);
+}
+
+/* Login screen */
+.login-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg, var(--surface-2));
+}
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px;
+}
+
+/* Inline alert */
+.alert {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.alert-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
 .avatar {
   display: grid;
   place-items: center;

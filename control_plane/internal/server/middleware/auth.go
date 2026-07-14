@@ -13,6 +13,7 @@ const (
 	ctxKeyUsername    = "auth.username"
 	ctxKeyRole        = "auth.role"
 	ctxKeyPermissions = "auth.permissions"
+	ctxKeyIsService   = "auth.isService"
 )
 
 // RequireAuth parses the Authorization: Bearer <token> header, verifies it,
@@ -57,7 +58,10 @@ func RequireAuth(secret string, store *users.Store) gin.HandlerFunc {
 // elsewhere.
 func RequirePermission(name string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if name == "" {
+		if name == "" || IsService(c) {
+			// A blank permission means "any authenticated caller"; a service
+			// caller (X-Service-Key) has already been fully authorized by
+			// RequireAuthOrServiceKey and carries no per-role permission set.
 			c.Next()
 			return
 		}
@@ -93,6 +97,40 @@ func RequireServiceKey(store *users.Store) gin.HandlerFunc {
 		c.Set("service.key", serviceKey)
 		c.Next()
 	}
+}
+
+// RequireAuthOrServiceKey accepts EITHER a valid X-Service-Key (a registered
+// engine pulling active DAGs) OR a user JWT. Used on the DAG read routes so
+// the execution engines can authenticate to the Control Plane without a user
+// login, per architecture.md. A service caller is marked as a service in the
+// context (IsService) and, having no role, is treated as having full read
+// access to the active DAGs it lists — the same "sees everything" path an
+// admin takes.
+func RequireAuthOrServiceKey(secret string, store *users.Store) gin.HandlerFunc {
+	auth := RequireAuth(secret, store)
+	return func(c *gin.Context) {
+		if key := c.GetHeader("X-Service-Key"); key != "" {
+			serviceID, serviceKey, err := store.ServiceByAPIKey(c.Request.Context(), key)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid service key"})
+				return
+			}
+			c.Set("service.id", serviceID)
+			c.Set("service.key", serviceKey)
+			c.Set(ctxKeyIsService, true)
+			c.Next()
+			return
+		}
+		auth(c)
+	}
+}
+
+// IsService reports whether the caller authenticated with a service key
+// rather than a user JWT.
+func IsService(c *gin.Context) bool {
+	v, _ := c.Get(ctxKeyIsService)
+	b, _ := v.(bool)
+	return b
 }
 
 // Username returns the authenticated caller's username, set by RequireAuth.
