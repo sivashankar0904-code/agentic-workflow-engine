@@ -9,8 +9,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrNotFound is returned when a named DAG does not exist.
+// ErrNotFound is returned when a DAG does not exist.
 var ErrNotFound = errors.New("dag not found")
+
+// ListEntry is one row of the DAG registry list: the stable id the UI and
+// engines address a DAG by, its human name, and its active lifecycle flag.
+type ListEntry struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+}
 
 // Store persists DAGs as a relational graph across three tables:
 //
@@ -29,13 +37,15 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-// Save creates or replaces the DAG stored under name. Nodes and edges are
-// rewritten atomically in a single transaction. The active flag is left
-// untouched for existing DAGs and defaults to false for new ones.
-func (s *Store) Save(ctx context.Context, name string, d DAG) error {
+// Save creates or replaces the DAG stored under name, returning its id.
+// Nodes and edges are rewritten atomically in a single transaction. The
+// active flag is left untouched for existing DAGs and defaults to false for
+// new ones. Upload stays name-addressed (a DAG is a named workflow), but the
+// generated id is what the UI and engines address it by thereafter.
+func (s *Store) Save(ctx context.Context, name string, d DAG) (int64, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
@@ -46,12 +56,12 @@ func (s *Store) Save(ctx context.Context, name string, d DAG) error {
 		ON CONFLICT (name) DO UPDATE SET updated_at = now()
 		RETURNING id`, name).Scan(&dagID)
 	if err != nil {
-		return fmt.Errorf("upsert dag_registry: %w", err)
+		return 0, fmt.Errorf("upsert dag_registry: %w", err)
 	}
 
 	// Replace the graph: cascading delete of nodes clears edges too.
 	if _, err := tx.Exec(ctx, `DELETE FROM nodes WHERE dag_id = $1`, dagID); err != nil {
-		return fmt.Errorf("clear nodes: %w", err)
+		return 0, fmt.Errorf("clear nodes: %w", err)
 	}
 
 	nodeIDByName := make(map[string]int64, len(d.Nodes))
@@ -63,7 +73,7 @@ func (s *Store) Save(ctx context.Context, name string, d DAG) error {
 			RETURNING id`,
 			dagID, n.Name, n.Topic, n.Host, n.Port, n.Entry, n.Tools).Scan(&nodeID)
 		if err != nil {
-			return fmt.Errorf("insert node %q: %w", n.Name, err)
+			return 0, fmt.Errorf("insert node %q: %w", n.Name, err)
 		}
 		nodeIDByName[n.Name] = nodeID
 	}
@@ -73,7 +83,7 @@ func (s *Store) Save(ctx context.Context, name string, d DAG) error {
 		for pos, route := range n.Routes {
 			toID, ok := nodeIDByName[route.To]
 			if !ok {
-				return fmt.Errorf("route target %q has no matching node", route.To)
+				return 0, fmt.Errorf("route target %q has no matching node", route.To)
 			}
 			var field, op, value *string
 			if route.When != nil {
@@ -84,32 +94,35 @@ func (s *Store) Save(ctx context.Context, name string, d DAG) error {
 				VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 				dagID, fromID, toID, pos, field, op, value)
 			if err != nil {
-				return fmt.Errorf("insert edge %q -> %q: %w", n.Name, route.To, err)
+				return 0, fmt.Errorf("insert edge %q -> %q: %w", n.Name, route.To, err)
 			}
 		}
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return dagID, nil
 }
 
-// Get reassembles the DAG stored under name from its nodes and edges.
-func (s *Store) Get(ctx context.Context, name string) (DAG, error) {
-	var dagID int64
+// Get reassembles the DAG with the given id from its nodes and edges.
+func (s *Store) Get(ctx context.Context, id int64) (DAG, error) {
+	var exists bool
 	err := s.pool.QueryRow(ctx,
-		`SELECT id FROM dag_registry WHERE name = $1`, name).Scan(&dagID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return DAG{}, ErrNotFound
-	}
+		`SELECT EXISTS (SELECT 1 FROM dag_registry WHERE id = $1)`, id).Scan(&exists)
 	if err != nil {
 		return DAG{}, err
 	}
-	return s.assemble(ctx, dagID)
+	if !exists {
+		return DAG{}, ErrNotFound
+	}
+	return s.assemble(ctx, id)
 }
 
-// List returns the names of all stored DAGs. If activeOnly is true, only
-// DAGs with active = true are returned.
-func (s *Store) List(ctx context.Context, activeOnly bool) ([]string, error) {
-	query := `SELECT name FROM dag_registry`
+// List returns all stored DAGs as {id, name, active}. If activeOnly is true,
+// only DAGs with active = true are returned.
+func (s *Store) List(ctx context.Context, activeOnly bool) ([]ListEntry, error) {
+	query := `SELECT id, name, active FROM dag_registry`
 	if activeOnly {
 		query += ` WHERE active = true`
 	}
@@ -121,32 +134,32 @@ func (s *Store) List(ctx context.Context, activeOnly bool) ([]string, error) {
 	}
 	defer rows.Close()
 
-	var names []string
+	entries := []ListEntry{}
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var e ListEntry
+		if err := rows.Scan(&e.ID, &e.Name, &e.Active); err != nil {
 			return nil, err
 		}
-		names = append(names, name)
+		entries = append(entries, e)
 	}
-	return names, rows.Err()
+	return entries, rows.Err()
 }
 
-// ListForRole returns the names of stored DAGs visible to roleName: every
-// DAG that has a dag_roles grant for roleName. If activeOnly is true, the
-// result is further restricted to active = true. Filters in SQL (not
-// post-filter) so unauthorized DAGs are simply absent from the list, rather
-// than fetched and then hidden.
-func (s *Store) ListForRole(ctx context.Context, roleName string, activeOnly bool) ([]string, error) {
+// ListForRole returns the stored DAGs visible to roleName: every DAG that
+// has a dag_roles grant for roleName. If activeOnly is true, the result is
+// further restricted to active = true. Filters in SQL (not post-filter) so
+// unauthorized DAGs are simply absent from the list, rather than fetched and
+// then hidden.
+func (s *Store) ListForRole(ctx context.Context, roleName string, activeOnly bool) ([]ListEntry, error) {
 	query := `
-		SELECT DISTINCT r.name FROM dag_registry r
+		SELECT DISTINCT r.id, r.name, r.active FROM dag_registry r
 		JOIN dag_roles dr ON dr.dag_id = r.id
 		JOIN roles ro ON ro.id = dr.role_id
 		WHERE ro.name = $1`
 	if activeOnly {
 		query += ` AND r.active = true`
 	}
-	query += ` ORDER BY 1`
+	query += ` ORDER BY r.name`
 
 	rows, err := s.pool.Query(ctx, query, roleName)
 	if err != nil {
@@ -154,49 +167,50 @@ func (s *Store) ListForRole(ctx context.Context, roleName string, activeOnly boo
 	}
 	defer rows.Close()
 
-	var names []string
+	entries := []ListEntry{}
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var e ListEntry
+		if err := rows.Scan(&e.ID, &e.Name, &e.Active); err != nil {
 			return nil, err
 		}
-		names = append(names, name)
+		entries = append(entries, e)
 	}
-	return names, rows.Err()
+	return entries, rows.Err()
 }
 
-// IDByName returns the dag_registry id for name, or ErrNotFound.
-func (s *Store) IDByName(ctx context.Context, name string) (int64, error) {
-	var id int64
-	err := s.pool.QueryRow(ctx, `SELECT id FROM dag_registry WHERE name = $1`, name).Scan(&id)
+// Meta returns the {id, name, active} of the DAG with the given id.
+func (s *Store) Meta(ctx context.Context, id int64) (ListEntry, error) {
+	var e ListEntry
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, active FROM dag_registry WHERE id = $1`, id).
+		Scan(&e.ID, &e.Name, &e.Active)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, ErrNotFound
+		return ListEntry{}, ErrNotFound
 	}
-	return id, err
+	return e, err
 }
 
 // VisibleToRole reports whether roleName has a dag_roles grant on the DAG
-// named name. Returns ErrNotFound if no such DAG exists.
-func (s *Store) VisibleToRole(ctx context.Context, name, roleName string) (bool, error) {
+// with the given id.
+func (s *Store) VisibleToRole(ctx context.Context, id int64, roleName string) (bool, error) {
 	var visible bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1 FROM dag_registry r
-			JOIN dag_roles dr ON dr.dag_id = r.id
+			SELECT 1 FROM dag_roles dr
 			JOIN roles ro ON ro.id = dr.role_id
-			WHERE r.name = $1 AND ro.name = $2
-		)`, name, roleName).Scan(&visible)
+			WHERE dr.dag_id = $1 AND ro.name = $2
+		)`, id, roleName).Scan(&visible)
 	if err != nil {
 		return false, err
 	}
 	return visible, nil
 }
 
-// SetActive flips the active lifecycle flag for the named DAG. Returns
-// ErrNotFound if no such DAG exists.
-func (s *Store) SetActive(ctx context.Context, name string, active bool) error {
+// SetActive flips the active lifecycle flag for the DAG with the given id.
+// Returns ErrNotFound if no such DAG exists.
+func (s *Store) SetActive(ctx context.Context, id int64, active bool) error {
 	tag, err := s.pool.Exec(ctx,
-		`UPDATE dag_registry SET active = $2, updated_at = now() WHERE name = $1`, name, active)
+		`UPDATE dag_registry SET active = $2, updated_at = now() WHERE id = $1`, id, active)
 	if err != nil {
 		return err
 	}
@@ -206,10 +220,10 @@ func (s *Store) SetActive(ctx context.Context, name string, active bool) error {
 	return nil
 }
 
-// Delete removes the DAG stored under name (nodes/edges cascade). Returns
+// Delete removes the DAG with the given id (nodes/edges cascade). Returns
 // ErrNotFound if no such DAG exists.
-func (s *Store) Delete(ctx context.Context, name string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM dag_registry WHERE name = $1`, name)
+func (s *Store) Delete(ctx context.Context, id int64) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM dag_registry WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}

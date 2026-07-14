@@ -12,7 +12,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	cp := controlplane.New(cfg.ControlPlaneURL)
+	cp := controlplane.New(cfg.ControlPlaneURL, cfg.ServiceKey)
 	registry := engine.NewRegistry(cp)
 
 	if err := registry.Refresh(); err != nil {

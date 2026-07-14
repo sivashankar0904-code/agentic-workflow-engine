@@ -1,23 +1,34 @@
-// User & RBAC admin queries + mutations (mock-backed).
-// Mirrors the Control Plane user endpoints in design.md §8.
+// User & RBAC admin queries + mutations, backed by the Control Plane
+// (design.md §8). The server returns isActive: boolean and role: string.
 
-import usersData from '../mocks/users.json';
-import { mock } from './client.js';
+import { request } from './client.js'
 
-let users = structuredClone(usersData);
-
-export function listUsers() {
-  return mock(users);
+// GET /users -> [{ username, role, isActive, email }]
+export async function listUsers() {
+  const { users } = await request('/users')
+  return users || []
 }
 
+// POST /users — onboard a new user with an admin-chosen temporary password.
+export function createUser({ username, password, role, email }) {
+  return request('/users', {
+    method: 'POST',
+    body: { username, password, role, email },
+  })
+}
+
+// PATCH /users/:username/role
 export function setUserRole(username, role) {
-  const user = users.find((u) => u.username === username);
-  if (user) user.role = role;
-  return mock(user ?? null);
+  return request(`/users/${encodeURIComponent(username)}/role`, {
+    method: 'PATCH',
+    body: { role },
+  })
 }
 
-export function setUserStatus(username, status) {
-  const user = users.find((u) => u.username === username);
-  if (user) user.status = status;
-  return mock(user ?? null);
+// PATCH /users/:username/active
+export function setUserActive(username, isActive) {
+  return request(`/users/${encodeURIComponent(username)}/active`, {
+    method: 'PATCH',
+    body: { isActive },
+  })
 }

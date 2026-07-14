@@ -71,6 +71,7 @@ services:
       - "8000:8000"
     environment:
       CONTROL_PLANE_URL: http://control_plane:9000
+      CONTROL_PLANE_SERVICE_KEY: dev-orchestrator-api-key-change-me
       KAFKA_BROKER: kafka:9092
     depends_on:
       control_plane:

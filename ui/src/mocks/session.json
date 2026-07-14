@@ -1,5 +1,0 @@
-{
-  "username": "alice",
-  "role": "admin",
-  "roles": ["admin", "editor", "ops"]
-}

@@ -1,12 +1,30 @@
 import { useState } from 'react'
+import { createUser } from '../api/users.js'
 
-const ROLES = ['admin', 'editor', 'ops', 'viewer']
-
-// "+ New user" modal — UI only, no submit logic/persistence yet.
-export default function NewUserModal({ onClose }) {
+// "+ New user" modal — admin onboarding. The admin sets a temporary initial
+// password (shared out-of-band); the user changes it via the account menu on
+// first login.
+export default function NewUserModal({ roles = [], onClose, onCreated }) {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState('viewer')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState(roles.includes('viewer') ? 'viewer' : roles[0] || '')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setError('')
+    setBusy(true)
+    try {
+      await createUser({ username: username.trim(), email: email.trim(), password, role })
+      onCreated?.()
+      onClose()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -19,6 +37,12 @@ export default function NewUserModal({ onClose }) {
         </div>
 
         <div className="modal-body">
+          {error && (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          )}
+
           <label className="field">
             <span className="field-label">Username</span>
             <input
@@ -42,6 +66,17 @@ export default function NewUserModal({ onClose }) {
           </label>
 
           <label className="field">
+            <span className="field-label">Temporary password</span>
+            <input
+              className="text-input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </label>
+
+          <label className="field">
             <span className="field-label">Role</span>
             <select
               className="role-select"
@@ -49,7 +84,7 @@ export default function NewUserModal({ onClose }) {
               onChange={(e) => setRole(e.target.value)}
               style={{ width: '100%' }}
             >
-              {ROLES.map((r) => (
+              {roles.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
@@ -60,7 +95,7 @@ export default function NewUserModal({ onClose }) {
 
         <div className="modal-foot">
           <span className="muted" style={{ fontSize: 12 }}>
-            No backend yet — creation isn't wired up.
+            The user changes this password on first login.
           </span>
           <div className="actions">
             <button className="btn btn-sm" onClick={onClose}>
@@ -68,9 +103,10 @@ export default function NewUserModal({ onClose }) {
             </button>
             <button
               className="btn btn-primary btn-sm"
-              disabled={!username.trim() || !email.trim()}
+              disabled={busy || !username.trim() || !password || !role}
+              onClick={submit}
             >
-              Create user
+              {busy ? 'Creating…' : 'Create user'}
             </button>
           </div>
         </div>

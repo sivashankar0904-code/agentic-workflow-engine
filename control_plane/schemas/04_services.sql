@@ -17,3 +17,10 @@ CREATE TABLE IF NOT EXISTS services (
 INSERT INTO services (key, name, api_key)
 VALUES ('control_plane', 'Control Plane', 'dev-control-plane-api-key-change-me')
 ON CONFLICT (key) DO NOTHING;
+
+-- The service_orchestrator engine, seeded with a known dev api_key it
+-- presents via X-Service-Key to pull active DAGs. Production must rotate
+-- this (and register other engines via POST /services instead).
+INSERT INTO services (key, name, api_key)
+VALUES ('service_orchestrator', 'Service Orchestrator', 'dev-orchestrator-api-key-change-me')
+ON CONFLICT (key) DO NOTHING;

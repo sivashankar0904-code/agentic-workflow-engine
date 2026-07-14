@@ -28,24 +28,24 @@ func NewRegistry(cp *controlplane.Client) *Registry {
 // changed, and drops any no longer active. Inactive or unauthorized flows are
 // never built.
 func (r *Registry) Refresh() error {
-	names, err := r.cp.ListActive()
+	active, err := r.cp.ListActive()
 	if err != nil {
 		return fmt.Errorf("refresh: %w", err)
 	}
 
-	built := make(map[string]*Flow, len(names))
-	for _, name := range names {
-		d, err := r.cp.Get(name)
+	built := make(map[string]*Flow, len(active))
+	for _, f := range active {
+		d, err := r.cp.Get(f.ID)
 		if err != nil {
-			log.Printf("refresh: skipping %q: %v", name, err)
+			log.Printf("refresh: skipping %q: %v", f.Name, err)
 			continue
 		}
-		flow, err := Build(name, d)
+		flow, err := Build(f.Name, d)
 		if err != nil {
-			log.Printf("refresh: skipping %q: %v", name, err)
+			log.Printf("refresh: skipping %q: %v", f.Name, err)
 			continue
 		}
-		built[name] = flow
+		built[f.Name] = flow
 	}
 
 	r.mu.Lock()
