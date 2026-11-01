@@ -39,8 +39,9 @@ func main() {
 	dagStore := dag.NewStore(pool)
 	userStore := users.NewStore(pool)
 
-	log.Println("Control plane running on :9000")
-	if err := server.New(dagStore, userStore, cfg.JWTSecret).Run(":9000"); err != nil {
+	httpCfg := cfg.HTTP()
+	log.Printf("Control plane running on %s", httpCfg.Addr())
+	if err := server.New(dagStore, userStore, cfg.JWTSecret).Run(httpCfg.Addr()); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
